@@ -1,0 +1,13 @@
+[Unit]
+Description=pi2kf server
+After=network.target auditd.service
+
+[Service]
+#EnvironmentFile=-/home/pi/pi2go/http.sh
+ExecStart=/home/pi/mot2bot/http-pi2kf.sh
+#ExecReload=/bin/kill -HUP $MAINPID
+#KillMode=process
+#Restart=on-failure
+
+[Install]
+WantedBy=multi-user.target
