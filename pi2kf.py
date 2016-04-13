@@ -101,6 +101,11 @@ def init():
     except:
         print "can't set PWM frequency!"
 
+    mh.getMotor(1).run(Adafruit_MotorHAT.RELEASE)
+    mh.getMotor(2).run(Adafruit_MotorHAT.RELEASE)
+    mh.getMotor(3).run(Adafruit_MotorHAT.RELEASE)
+    mh.getMotor(4).run(Adafruit_MotorHAT.RELEASE)
+
 # cleanup(). Sets all motors and LEDs off and sets GPIO to standard values
 def cleanup():
     stop()
@@ -127,10 +132,10 @@ def stop():
 
 # go(leftSpeed, rightSpeed): controls motors in both directions independently using different positive/negative speeds. -100<= leftSpeed,rightSpeed <= 100
 def go(leftSpeed, rightSpeed):
-    mL.setSpeed(int(abs(leftSpeed*2.55)))
-    mR.setSpeed(int(abs(rightSpeed*2.55)))
-    print(int(abs(leftSpeed*2.55)))
-    print(int(abs(rightSpeed*2.55)))
+    mL.setSpeed(int(abs(leftSpeed*2.53)))
+    mR.setSpeed(int(abs(rightSpeed*2.53)))
+    print(int(abs(leftSpeed*2.53)))
+    print(int(abs(rightSpeed*2.53)))
     mL.run(Adafruit_MotorHAT.FORWARD if leftSpeed > 0 else Adafruit_MotorHAT.BACKWARD)
     mR.run(Adafruit_MotorHAT.FORWARD if rightSpeed > 0 else Adafruit_MotorHAT.BACKWARD)
     if leftSpeed == 0:

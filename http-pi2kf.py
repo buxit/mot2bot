@@ -1,7 +1,6 @@
 #!/usr/bin/python 
 # coding=utf-8
 from datetime import datetime
-#from pygame.locals import *
 from subprocess import call, Popen, PIPE
 from threading import Thread
 from urlparse import urlparse,parse_qsl
@@ -13,7 +12,6 @@ import csv
 import cv2
 import face
 import os
-import pygame
 import qrcode
 import signal, os
 import socket, fcntl, struct
@@ -31,12 +29,8 @@ PORT_NUMBER = 8888	# listen on this port
 pan = 0
 tilt = 1
 
-#tavbot
-pVal = pCenter = 11
-tVal = tCenter = -61
-#pi2kf
-pVal = pCenter = -4
-tVal = tCenter = 2
+pVal = pCenter = config.pCenter
+tVal = tCenter = config.tCenter
 
 bufsize = 1 	# line buffered
 disp = 0

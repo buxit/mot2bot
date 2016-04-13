@@ -1,12 +1,19 @@
 MODEL_PI2KF = 1
 MODEL_TAVBOT = 2
 
-model = MODEL_PI2KF
+pCenter=0
+tCenter=0
+
+model = MODEL_TAVBOT
 
 if model == MODEL_PI2KF:
+    pCenter = -4
+    tCenter = 2
     MOT2BOT_NAME = 'PI2KF'
 else:
     MOT2BOT_NAME = 'Tavbot'
+    pCenter = 11
+    tCenter = -61
 
 # Raspberry Pi Face Recognition Treasure Box Configuration
 # Copyright 2013 Tony DiCola 
