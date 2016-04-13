@@ -1,5 +1,7 @@
 *.pgm
 *.png
+labels.csv
+training.xml
 
 
 # Byte-compiled / optimized / DLL files
