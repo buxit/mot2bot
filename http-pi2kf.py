@@ -161,21 +161,21 @@ class MyHandler(BaseHTTPServer.BaseHTTPRequestHandler):
             else:
                 name = cmds['name'].title()
                 ti = time.time();
-                image = camera.read()
+                fimage = camera.read()
                 print time.time()-ti, 'read()';
                 ti = time.time();
                 # Convert image to grayscale.
-                image = cv2.cvtColor(image, cv2.COLOR_RGB2GRAY)
+                fimage = cv2.cvtColor(fimage, cv2.COLOR_RGB2GRAY)
                 print time.time()-ti, 'cvtColor()';
                 ti = time.time();
                 # Get coordinates of single face in captured image.
-                result = face.detect_single(image)
+                result = face.detect_single(fimage)
                 print time.time()-ti, 'detectSingle()';
                 if result is not None:
                     x, y, w, h = result
                     ti = time.time();
                     # Crop and resize image to face.
-                    crop = face.resize(face.crop(image, x, y, w, h))
+                    crop = face.resize(face.crop(fimage, x, y, w, h))
                     print time.time()-ti, 'resize()';
                     ti = time.time();
                     fulldir = os.path.join(config.POSITIVE_DIR, name)
@@ -198,21 +198,21 @@ class MyHandler(BaseHTTPServer.BaseHTTPRequestHandler):
             print label_to_num
             print num_to_label
             ti = time.time();
-            image = camera.read()
+            fimage = camera.read()
             print time.time()-ti, 'read()';
             ti = time.time();
             # Convert image to grayscale.
-            image = cv2.cvtColor(image, cv2.COLOR_RGB2GRAY)
+            fimage = cv2.cvtColor(fimage, cv2.COLOR_RGB2GRAY)
             print time.time()-ti, 'cvtColor()';
             ti = time.time();
             # Get coordinates of single face in captured image.
-            result = face.detect_single(image)
+            result = face.detect_single(fimage)
             print time.time()-ti, 'detectSingle()';
             if result is not None:
                 x, y, w, h = result
                 ti = time.time();
                 # Crop and resize image to face.
-                crop = face.resize(face.crop(image, x, y, w, h))
+                crop = face.resize(face.crop(fimage, x, y, w, h))
                 print time.time()-ti, 'resize()';
                 ti = time.time();
                 # Test face against model.
