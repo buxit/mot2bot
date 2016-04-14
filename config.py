@@ -4,11 +4,11 @@ MODEL_TAVBOT = 2
 pCenter=0
 tCenter=0
 
-model = MODEL_TAVBOT
+model = MODEL_PI2KF
 
 if model == MODEL_PI2KF:
     pCenter = -4
-    tCenter = 2
+    tCenter = -43
     MOT2BOT_NAME = 'PI2KF'
 else:
     MOT2BOT_NAME = 'Tavbot'

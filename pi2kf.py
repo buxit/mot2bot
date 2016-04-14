@@ -11,6 +11,7 @@
 #
 #======================================================================
 
+from Adafruit_I2C import Adafruit_I2C
 from Adafruit_MotorHAT import Adafruit_MotorHAT, Adafruit_DCMotor
 
 import time
@@ -203,3 +204,21 @@ def setServo(pin, degrees):
     pinString = "echo " + str(pin) + "=" + str(50+ ((90 - degrees) * 200 / 180)) + " > /dev/servoblaster"
     #print (pinString)
     os.system(pinString)
+
+class FuelGauge:
+    def __init__(self, address):
+        self.i2c = Adafruit_I2C(address)
+        self.i2c.write16(0x06, 0x0040)
+        self.percent = 0.0
+        self.voltage = 0.0
+
+    def update(self):
+        fg_ad = self.i2c.readU16(0x2)
+        fg_ad = fg_ad >> 4
+        fg_ad = self.i2c.reverseByteOrder(fg_ad)
+        self.voltage = fg_ad*0.00125;
+
+        fg_pc1 = self.i2c.readU8(0x4)
+        fg_pc2 = self.i2c.readU8(0x5)
+        self.percent = fg_pc1 + fg_pc2/256.0;
+

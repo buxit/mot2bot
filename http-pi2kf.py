@@ -39,16 +39,10 @@ os.environ['PATH'] += ':/usr/local/bin'
 if(os.path.dirname(__file__) != ''):
     os.chdir(os.path.dirname(__file__))
 
-#os.environ["SDL_FBDEV"] = "/dev/fb1"
-#surf = pygame.display.set_mode((128, 128), 0, 16)
-
-# draw on the surface object
-#surf.fill(WHITE)
-#pygame.draw.line(surf, BLUE, (0, 32), (128, 128), 4)
-#pygame.display.update()
+fuelgauge = pi2kf.FuelGauge(0x36)
+bat_lastupdate = 0
 
 p = Popen("espeak --stdout -v german-mbrola-5 -s 130 | aplay -q", shell=True, bufsize=bufsize, stdin=PIPE)
-
 
 def get_ip_address(ifname):
     s = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
@@ -108,7 +102,17 @@ class MyHandler(BaseHTTPServer.BaseHTTPRequestHandler):
         s.end_headers()
     def do_GET (s):
         """Respond to a GET request."""
-        global tVal, pVal
+        global tVal, pVal, fuelgauge, image, bat_lastupdate
+
+        ti = time.time();
+        if ti > bat_lastupdate + 1.0:
+            fuelgauge.update()
+            draw.rectangle((65, 0, width-1, 24), outline=0, fill=0)
+            draw.text((65,  0), 'BAT: {0:5.2f} %'.format(fuelgauge.percent),  font=font9, fill=display.DARK_RED)
+            draw.text((65, 12), 'BAT: {0:5.2f} V'.format(fuelgauge.voltage),  font=font9, fill=display.DARK_RED)
+            display.update(image)
+            bat_lastupdate = time.time()
+
         s.send_response(200)
         origin = s.headers.get('Origin')
         if origin:
@@ -117,8 +121,10 @@ class MyHandler(BaseHTTPServer.BaseHTTPRequestHandler):
         s.send_header("Access-Control-Allow-Origin", "*")
         s.end_headers()
         cmds = dict(parse_qsl(urlparse(s.path).query))
-        print cmds
+        #print cmds
         cmd = cmds['cmd']
+        if(cmd=='status'):
+            s.wfile.write('{'+'"bat_perc":{:5.2f}, "bat_volt":{:5.2f}'.format(fuelgauge.percent, fuelgauge.voltage)+'}')
         if(cmd=='drive'):
             left = float(cmds['l'])
             right = float(cmds['r'])
@@ -220,7 +226,7 @@ class MyHandler(BaseHTTPServer.BaseHTTPRequestHandler):
                     speak('Da ist ein Gesicht, aber ich weiss nicht wer es sein könnte.')
             else:
                 speak("Ich erkenne leider kein Gesicht.")
-        #s.wfile.write("</body></html>")
+        # HTTP send reply
         s.wfile.close()
 
 if __name__ == '__main__':
@@ -236,7 +242,6 @@ if __name__ == '__main__':
 
     width = display.width
     height = display.width
-    #image = Image.new('RGB', (width, height))
 
     # Get drawing object to draw on image.
     draw = ImageDraw.Draw(image)
@@ -244,25 +249,14 @@ if __name__ == '__main__':
     # Draw a black filled box to clear the image.
     draw.rectangle((0,0,width,height), outline=0, fill=0)
 
-    # Draw some shapes.
-    # First define some constants to allow easy resizing of shapes.
+    #padding = 0
+    font22 = ImageFont.truetype('/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf', 22)
+    font9  = ImageFont.truetype('/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf', 9)
 
 
-    padding = 0
-    shape_width = 36
-    top = padding
-    bottom = height-padding-1
-    # Move left to right keeping track of the current x position for drawing shapes.
-    x = padding
-    # Draw an ellipse.
-    font = ImageFont.truetype('/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf', 25)
-    font9 = ImageFont.truetype('/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf', 9)
-    smallfont = ImageFont.truetype('/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf', 5)
-
-
-    draw.text((0, -5), 'Auf',  font=font, fill=255)
-    draw.text((0, 25), 'Netzwerk', font=font, fill=255)
-    draw.text((0, 50), 'Warten...', font=font, fill=255)
+    draw.text((0, -5), 'Warten auf',  font=font22, fill=255)
+    draw.text((0, 25), 'Netzwerk ...', font=font22, fill=255)
+    draw.text((0,55), str(300), font=font9, fill=255)
 
 
 
@@ -291,18 +285,19 @@ if __name__ == '__main__':
     while ip_addr == '':
         req=req + 1
         if req > 300:
-            draw.text((0, -5), 'Verbindung',  font=font, fill=255)
-            draw.text((0, 35), 'Fehlgeschlagen',  font=font, fill=255)
+            draw.text((0, -5), 'Verbindung',  font=font22, fill=255)
+            draw.text((0, 25), 'Fehlgeschlagen',  font=font22, fill=255)
             speak("Verbindung mit Netzwerk Fehlgeschlagen! System wird herruntergefahren...")
             call("bin/poweroff &", shell=True)
             display.update(image)
 
             time.sleep(15);
         else:
-            draw.text((0, 25), 'Netzwerk', font=font, fill=255)
-            draw.text((0, 50), 'Warten...', font=font, fill=255)
+            #draw.text((0, 25), 'Netzwerk', font=font, fill=255)
+            #draw.text((0, 50), 'Warten...', font=font, fill=255)
             rem = 300 - req
-            draw.text((0,55), str(rem), font=smallfont, fill=255)
+            draw.rectangle((0,55,width,height), outline=0, fill=0)
+            draw.text((0,55), str(rem), font=font9, fill=255)
             display.update(image)
         try:
             ip_addr = get_ip_address('wlan0')
@@ -326,29 +321,29 @@ if __name__ == '__main__':
     qr.make(fit=True)
 
     img = qr.make_image()
-    #surf.fill((0,0,0)) 
 
-    # Draw an ellipse.
-    draw.ellipse((90, top , 90+shape_width, 0+shape_width), outline=255, fill=0)
-    draw.ellipse((100, top+12 , 100+6, 12+6), outline=255, fill=0)
-    draw.ellipse((110, top+12 , 110+6, 12+6), outline=255, fill=0)
-    draw.arc((100, 12, 116, 12+16), start=30, end=150, fill=255)
-    draw.text((65, 43), config.MOT2BOT_NAME+' bereit.',  font=font9, fill=display.DARK_RED)
-    draw.text((10, 75), ip_addr, font=font9, fill=display.ORANGE)
+    fuelgauge.update()
+    if config.model == config.MODEL_TAVBOT:
+        # Draw a smiley
+        top = 0
+        shape_width = 36
+        draw.ellipse((90, top , 90+shape_width, 0+shape_width), outline=255, fill=0)
+        draw.ellipse((100, top+12 , 100+6, 12+6), outline=255, fill=0)
+        draw.ellipse((110, top+12 , 110+6, 12+6), outline=255, fill=0)
+        draw.arc((100, 12, 116, 12+16), start=30, end=150, fill=255)
+        draw.text((65, 44), config.MOT2BOT_NAME+' bereit.',  font=font9, fill=display.DARK_RED)
+        draw.text((65, 53), 'BAT: {0:3.2}% ({1:1.2} V)'.format(fuelgauge.percent, fuelgauge.voltage),  font=font9, fill=display.DARK_RED)
+        draw.text((10, 75), ip_addr, font=font9, fill=display.ORANGE)
+    else:
+        draw.rectangle((65, 0, width-1, 24), outline=0, fill=0)
+        draw.text((65,  0), 'BAT: {0:5.2f} %'.format(fuelgauge.percent),  font=font9, fill=display.DARK_RED)
+        draw.text((65, 12), 'BAT: {0:5.2f} V'.format(fuelgauge.voltage),  font=font9, fill=display.DARK_RED)
 
     image.paste(img, (-1, -1));
     call("aplay -q /home/pi/pi2kf/bla.wav", shell=True)
-
-
     speak(config.MOT2BOT_NAME+" bereit.")
-    speak("Meine EiPi-Adresse in diesem Netzwerk lautet: " + (ip_addr.replace("", " ")).replace(".", "punkt"))	
+    speak("Meine EiPi-Adresse lautet: " + (ip_addr.replace("", " ")).replace(".", "punkt"))
     image2 = image.point(lambda p: p * 0.5)
-    #disp.image(image)
-    #disp.display()
-    #surf.blit(image, (0,0))
-    #idata = image2.tostring()
-    #pgimage = pygame.image.fromstring(idata, image.size, image.mode)
-    #surf.blit(pgimage, (0,32))
     display.update(image2)
 
     try:
