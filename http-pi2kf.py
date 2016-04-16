@@ -162,7 +162,7 @@ class MyHandler(BaseHTTPServer.BaseHTTPRequestHandler):
                 beep=False
                 global beep
             else:
-                Popen("mpg123 --loop -1 /home/pi/mot2bot/beep-beep.mp3", shell=True, bufsize=bufsize, stdin=PIPE)
+                Popen("mpg123 --loop -1 --scale 15000 /home/pi/mot2bot/beep-beep.mp3", shell=True, bufsize=bufsize, stdin=PIPE)
                 beep=True
                 global beep
         if(cmd=="face-learn"):
