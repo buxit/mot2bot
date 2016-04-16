@@ -79,6 +79,7 @@ label_to_num = {}
 num_to_label = {}
 maxlabel = 0
 shutdown = '0'
+beep=False
 
 if __name__ == '__main__':
     maxlabel=0
@@ -155,6 +156,15 @@ class MyHandler(BaseHTTPServer.BaseHTTPRequestHandler):
             call("espeak --stdout -v german 'Oh, oh! Ich werde abgeschalten!' | aplay -q", shell=True)
             call("mpg123 -q /home/pi/pi2kf/Robot_dying.mp3", shell=True)
             call("/sbin/poweroff &", shell=True)
+        if(cmd=="toggle-beep"):
+            if beep==True:
+                call("killall mpg123", shell=True)
+                beep=False
+                global beep
+            else:
+                Popen("mpg123 --loop -1 /home/pi/mot2bot/beep-beep.mp3", shell=True, bufsize=bufsize, stdin=PIPE)
+                beep=True
+                global beep
         if(cmd=="face-learn"):
             if not 'name' in cmds:
                 speak('Ich brauche einen Namen zum lernen!');
@@ -252,11 +262,14 @@ if __name__ == '__main__':
     #padding = 0
     font22 = ImageFont.truetype('/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf', 22)
     font9  = ImageFont.truetype('/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf', 9)
+    font25 = ImageFont.truetype('/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf', 25)
+    #Draw Mot2Bot
+    draw.text((10,20), 'mot2bot', font=font25, fill=255)
+    display.update(image)
 
-
-    draw.text((0, -5), 'Warten auf',  font=font22, fill=255)
-    draw.text((0, 25), 'Netzwerk ...', font=font22, fill=255)
-    draw.text((0,55), str(300), font=font9, fill=255)
+    #draw.text((0, -5), 'Warten auf',  font=font22, fill=255)
+    #draw.text((0, 25), 'Netzwerk ...', font=font22, fill=255)
+    #draw.text((0,55), str(300), font=font9, fill=255)
 
 
 
