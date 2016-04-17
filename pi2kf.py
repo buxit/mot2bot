@@ -31,11 +31,6 @@ atexit.register(turnOffMotors)
 mL = mh.getMotor(1)
 mR = mh.getMotor(2)
 
-# turn on leds
-#m3 = mh.getMotor(3)
-#m3.setSpeed(255)
-#m3.run(Adafruit_MotorHAT.FORWARD)
-
 #======================================================================
 # General Functions
 # (Both versions)
@@ -88,6 +83,12 @@ sonar = 8
 switch = 16
 Lswitch = 23
 
+def setLed(on, brightness=255):
+    if on:
+        mh.getMotor(3).setSpeed(b)
+        mh.getMotor(3).run(Adafruit_MotorHAT.FORWARD)
+    else:
+        mh.getMotor(3).run(Adafruit_MotorHAT.RELEASE)
 #======================================================================
 # General Functions
 #
@@ -221,4 +222,23 @@ class FuelGauge:
         fg_pc1 = self.i2c.readU8(0x4)
         fg_pc2 = self.i2c.readU8(0x5)
         self.percent = fg_pc1 + fg_pc2/256.0;
+
+class BlinkThread(threading.Thread):
+    def __init__(self):
+        super(BlinkThread, self).__init__()
+        self.b=127
+        self.speed=0.5
+        self.blink=True
+    def run(self):
+        while self.blink:
+            setLed(True, self.b)
+            time.sleep(self.speed)
+            setLed(False)
+            time.sleep(self.speed)
+    def setBrightness(self,br):
+        self.b = br
+    def setBlinkSpeed(self,sp):
+        self.speed = sp
+    def quit(self):
+        self.blink=False
 

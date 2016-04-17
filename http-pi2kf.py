@@ -2,7 +2,7 @@
 # coding=utf-8
 from datetime import datetime
 from subprocess import call, Popen, PIPE
-from threading import Thread
+import threading
 from urlparse import urlparse,parse_qsl
 import BaseHTTPServer
 import Image
@@ -28,7 +28,6 @@ PORT_NUMBER = 8888	# listen on this port
 # Define pins for Pan/Tilt
 pan = 0
 tilt = 1
-
 pVal = pCenter = config.pCenter
 tVal = tCenter = config.tCenter
 
@@ -42,6 +41,9 @@ if(os.path.dirname(__file__) != ''):
 fuelgauge = pi2kf.FuelGauge(0x36)
 bat_lastupdate = 0
 
+blinkthread = pi2kf.BlinkThread()
+blinkthread.daemon = True
+
 p = Popen("espeak --stdout -v german-mbrola-5 -s 130 | aplay -q", shell=True, bufsize=bufsize, stdin=PIPE)
 
 def get_ip_address(ifname):
@@ -53,9 +55,13 @@ def get_ip_address(ifname):
         )[20:24])
 
 def cleanup():
+    global blinkthread
     p.communicate()
     httpd.server_close()
     print "Server Stops - %s:%s" % (HOST_NAME, PORT_NUMBER)
+    if blinkthread.isAlive():
+        blinkthread.quit()
+        blinkthread.join()
     pi2kf.cleanup()
     #disp.clear()
     #disp.display()
@@ -103,14 +109,18 @@ class MyHandler(BaseHTTPServer.BaseHTTPRequestHandler):
         s.end_headers()
     def do_GET (s):
         """Respond to a GET request."""
-        global tVal, pVal, fuelgauge, image, bat_lastupdate
+        global tVal, pVal, fuelgauge, image, bat_lastupdate, blinkthread, beep
 
         ti = time.time();
         if ti > bat_lastupdate + 1.0:
             fuelgauge.update()
-            draw.rectangle((65, 0, width-1, 24), outline=0, fill=0)
-            draw.text((65,  0), 'BAT: {0:5.2f} %'.format(fuelgauge.percent),  font=font9, fill=display.DARK_RED)
-            draw.text((65, 12), 'BAT: {0:5.2f} V'.format(fuelgauge.voltage),  font=font9, fill=display.DARK_RED)
+            if config.model == config.MODEL_PI2KF:
+                y = 0
+            else:
+                y = 54
+            draw.rectangle((65, y+0, width-1, y+24), outline=0, fill=0)
+            draw.text((65, y+ 0), 'BAT: {0:5.2f} %'.format(fuelgauge.percent),  font=font9, fill=display.DARK_RED)
+            draw.text((65, y+11), 'BAT: {0:5.2f} V'.format(fuelgauge.voltage),  font=font9, fill=display.DARK_RED)
             display.update(image)
             bat_lastupdate = time.time()
 
@@ -156,15 +166,25 @@ class MyHandler(BaseHTTPServer.BaseHTTPRequestHandler):
             call("espeak --stdout -v german 'Oh, oh! Ich werde abgeschalten!' | aplay -q", shell=True)
             call("mpg123 -q /home/pi/pi2kf/Robot_dying.mp3", shell=True)
             call("/sbin/poweroff &", shell=True)
+        if(cmd=="toggle-ledblink"):
+            print("Processing LED Command...")
+            if not blinkthread.isAlive():
+                print("Starting Thread...")
+                blinkthread.start()
+                blinkthread.setBrightness(255)
+                blinkthread.setBlinkSpeed(0.5)
+            else:
+                print("Stopping Thread")
+                blinkthread.quit()
+                blinkthread.join()
+                blinkthread = pi2kf.BlinkThread()
         if(cmd=="toggle-beep"):
             if beep==True:
                 call("killall mpg123", shell=True)
                 beep=False
-                global beep
             else:
-                Popen("mpg123 --loop -1 --scale 15000 /home/pi/mot2bot/beep-beep.mp3", shell=True, bufsize=bufsize, stdin=PIPE)
+                call("mpg123 --loop -1 --scale 3000 /home/pi/mot2bot/beep-beep.mp3 &", shell=True)
                 beep=True
-                global beep
         if(cmd=="face-learn"):
             if not 'name' in cmds:
                 speak('Ich brauche einen Namen zum lernen!');
@@ -301,9 +321,8 @@ if __name__ == '__main__':
             draw.text((0, -5), 'Verbindung',  font=font22, fill=255)
             draw.text((0, 25), 'Fehlgeschlagen',  font=font22, fill=255)
             speak("Verbindung mit Netzwerk Fehlgeschlagen! System wird herruntergefahren...")
-            call("bin/poweroff &", shell=True)
+            call("/sbin/poweroff &", shell=True)
             display.update(image)
-
             time.sleep(15);
         else:
             #draw.text((0, 25), 'Netzwerk', font=font, fill=255)
@@ -320,7 +339,7 @@ if __name__ == '__main__':
             except IOError:
                 ip_addr = ('')
         time.sleep(1)
-    t = Thread(target=secure, args=(ip_addr,))
+    t = threading.Thread(target=secure, args=(ip_addr,))
     #t.start()
     draw.rectangle((0,0,width,height), outline=0, fill=0)
     qr = qrcode.QRCode(
@@ -345,8 +364,7 @@ if __name__ == '__main__':
         draw.ellipse((110, top+12 , 110+6, 12+6), outline=255, fill=0)
         draw.arc((100, 12, 116, 12+16), start=30, end=150, fill=255)
         draw.text((65, 44), config.MOT2BOT_NAME+' bereit.',  font=font9, fill=display.DARK_RED)
-        draw.text((65, 53), 'BAT: {0:3.2}% ({1:1.2} V)'.format(fuelgauge.percent, fuelgauge.voltage),  font=font9, fill=display.DARK_RED)
-        draw.text((10, 75), ip_addr, font=font9, fill=display.ORANGE)
+        draw.text((0, 78), ip_addr, font=font9, fill=display.ORANGE)
     else:
         draw.rectangle((65, 0, width-1, 24), outline=0, fill=0)
         draw.text((65,  0), 'BAT: {0:5.2f} %'.format(fuelgauge.percent),  font=font9, fill=display.DARK_RED)
