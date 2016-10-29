@@ -4,7 +4,7 @@ MODEL_TAVBOT = 2
 pCenter=0
 tCenter=0
 
-model = MODEL_PI2KF
+model = MODEL_TAVBOT
 
 if model == MODEL_PI2KF:
     pCenter = -4

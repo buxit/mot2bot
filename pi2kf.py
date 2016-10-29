@@ -85,7 +85,7 @@ Lswitch = 23
 
 def setLed(on, brightness=255):
     if on:
-        mh.getMotor(3).setSpeed(b)
+        mh.getMotor(3).setSpeed(brightness)
         mh.getMotor(3).run(Adafruit_MotorHAT.FORWARD)
     else:
         mh.getMotor(3).run(Adafruit_MotorHAT.RELEASE)
@@ -217,7 +217,8 @@ class FuelGauge:
         fg_ad = self.i2c.readU16(0x2)
         fg_ad = fg_ad >> 4
         fg_ad = self.i2c.reverseByteOrder(fg_ad)
-        self.voltage = fg_ad*0.00125;
+        if fg_ad:
+            self.voltage = fg_ad*0.00125;
 
         fg_pc1 = self.i2c.readU8(0x4)
         fg_pc2 = self.i2c.readU8(0x5)

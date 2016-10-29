@@ -9,18 +9,18 @@ MODE_FB = 0
 width = 0
 height = 0
 
-BLACK    = (  0,   0,   0)
-WHITE    = (255, 255, 255)
-RED      = (255,   0,   0)
-GREEN    = (  0, 255,   0)
-BLUE     = (  0,   0, 255)
-DARK_RED = (  0, 204,   0)
-ORANGE   = (255, 153,  51)
+BLACK      = (  0,   0,   0)
+WHITE      = (255, 255, 255)
+RED        = (255,   0,   0)
+GREEN      = (  0, 255,   0)
+BLUE       = (  0,   0, 255)
+DARK_GREEN = (  0, 204,   0)
+ORANGE     = (255, 153,  51)
 
 
 def init():
     global surf, disp, mode, image, width, height
-    global BLACK, WHITE, RED, GREEN, BLUE, DARK_RED, ORANGE
+    global BLACK, WHITE, RED, GREEN, BLUE, DARK_GREEN, ORANGE
 
     mode = (MODE_SPI if config.model == config.MODEL_PI2KF else MODE_FB)
 
@@ -36,7 +36,7 @@ def init():
         disp.clear()
         disp.display()
         BLACK = 0
-        WHITE = RED = GREEN = BLUE = DARK_RED = ORANGE = 255
+        WHITE = RED = GREEN = BLUE = DARK_GREEN = ORANGE = 255
         image = Image.new('1', (disp.width, disp.height))
         width = disp.width
         height = disp.width

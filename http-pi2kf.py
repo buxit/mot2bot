@@ -17,6 +17,7 @@ import signal, os
 import socket, fcntl, struct
 import sys
 import time
+from gpiozero import Button
 
 import config
 import pi2kf
@@ -24,7 +25,9 @@ import display
 
 HOST_NAME = ''		# listen on this address
 PORT_NUMBER = 8888	# listen on this port
-
+global quit
+quit = False
+global secureThread
 # Define pins for Pan/Tilt
 pan = 0
 tilt = 1
@@ -39,13 +42,11 @@ if(os.path.dirname(__file__) != ''):
     os.chdir(os.path.dirname(__file__))
 
 fuelgauge = pi2kf.FuelGauge(0x36)
-bat_lastupdate = 0
 
 blinkthread = pi2kf.BlinkThread()
 blinkthread.daemon = True
 
 p = Popen("espeak --stdout -v german-mbrola-5 -s 130 | aplay -q", shell=True, bufsize=bufsize, stdin=PIPE)
-
 def get_ip_address(ifname):
     s = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
     return socket.inet_ntoa(fcntl.ioctl(
@@ -54,6 +55,8 @@ def get_ip_address(ifname):
         struct.pack('256s', ifname[:15])
         )[20:24])
 
+def soundAnnounce():
+    call("aplay -q /home/pi/pi2kf/bla.wav", shell=True)
 def cleanup():
     global blinkthread
     p.communicate()
@@ -100,6 +103,18 @@ if __name__ == '__main__':
     model.load(config.TRAINING_FILE)
     print 'loaded.'
 
+def httpThreadFunc():
+    server_class = BaseHTTPServer.HTTPServer
+    httpd = server_class((HOST_NAME, PORT_NUMBER), MyHandler)
+    print "Server Starts - %s:%s" % (HOST_NAME, PORT_NUMBER)
+    try:
+        httpd.serve_forever()
+    except KeyboardInterrupt:
+        quitThread()
+    except Exception:
+        quitThread()
+    cleanup()
+
 class MyHandler(BaseHTTPServer.BaseHTTPRequestHandler):
     def do_HEAD(s):
         s.send_response(200)
@@ -109,21 +124,9 @@ class MyHandler(BaseHTTPServer.BaseHTTPRequestHandler):
         s.end_headers()
     def do_GET (s):
         """Respond to a GET request."""
-        global tVal, pVal, fuelgauge, image, bat_lastupdate, blinkthread, beep
+        global tVal, pVal, fuelgauge, image, blinkthread, beep
 
         ti = time.time();
-        if ti > bat_lastupdate + 1.0:
-            fuelgauge.update()
-            if config.model == config.MODEL_PI2KF:
-                y = 0
-            else:
-                y = 54
-            draw.rectangle((65, y+0, width-1, y+24), outline=0, fill=0)
-            draw.text((65, y+ 0), 'BAT: {0:5.2f} %'.format(fuelgauge.percent),  font=font9, fill=display.DARK_RED)
-            draw.text((65, y+11), 'BAT: {0:5.2f} V'.format(fuelgauge.voltage),  font=font9, fill=display.DARK_RED)
-            display.update(image)
-            bat_lastupdate = time.time()
-
         s.send_response(200)
         origin = s.headers.get('Origin')
         if origin:
@@ -162,8 +165,14 @@ class MyHandler(BaseHTTPServer.BaseHTTPRequestHandler):
             speak(cmds['words'])
             #call("espeak --stdout -v german '"+cmds['words']+"' | aplay -q &", shell=True)
         if(cmd=="shutdown"):
-            shutdown='1'
-            call("espeak --stdout -v german 'Oh, oh! Ich werde abgeschalten!' | aplay -q", shell=True)
+            shutdown = '1'
+            try:
+                quit = True
+                secureThread.stop()
+            except:
+                pass
+            speak("Herrunterfahren...")
+            time.sleep(3)
             call("mpg123 -q /home/pi/pi2kf/Robot_dying.mp3", shell=True)
             call("/sbin/poweroff &", shell=True)
         if(cmd=="toggle-ledblink"):
@@ -260,13 +269,13 @@ class MyHandler(BaseHTTPServer.BaseHTTPRequestHandler):
         s.wfile.close()
 
 if __name__ == '__main__':
-    server_class = BaseHTTPServer.HTTPServer
-    httpd = server_class((HOST_NAME, PORT_NUMBER), MyHandler)
-    print "Server Starts - %s:%s" % (HOST_NAME, PORT_NUMBER)
     pi2kf.init()
     #call("aplay -q /home/pi/pi2kf/bla.wav", shell=True)
     speak("System gestartet!,")
     speak("Warten auf Netzwerk!")
+    httpThread = threading.Thread(target=httpThreadFunc)
+    httpThread.daemon = True
+    httpThread.start()
 
     image = display.init()
 
@@ -306,15 +315,38 @@ if __name__ == '__main__':
     pVal = pCenter
     pi2kf.setServo(pan, pVal)
     pi2kf.setServo(tilt, tVal)
-    def secure(y):
-        while shutdown == '0':
-            x = os.system("ping -c 1 " + y)
+
+    def shutdownButton():
+        button_2 = Button(23, pull_up=True) 
+        button_2.wait_for_press()
+        speak("Herrunterfahren...")
+        time.sleep(3)
+        call("mpg123 -q /home/pi/pi2kf/Robot_dying.mp3", shell=True)
+        call("/sbin/poweroff &", shell=True)
+
+    def secure():
+        ###global quit
+        while not quit:
+            try:
+                ip_addr = get_ip_address('wlan0')
+            except IOError:
+                try:
+                   ip_addr = get_ip_address('eth0')
+                except IOError:
+                   ip_addr = ('')
+
+            x = os.system("ping -c 1 " + ip_addr)
             if x != 0:
                 pi2kf.stop()
             time.sleep(1) 
-
     ip_addr = ''
     req=0
+
+    buttonThread = threading.Thread(target=shutdownButton)
+    buttonThread.daemon = True
+    buttonThread.start()
+
+
     while ip_addr == '':
         req=req + 1
         if req > 300:
@@ -339,8 +371,6 @@ if __name__ == '__main__':
             except IOError:
                 ip_addr = ('')
         time.sleep(1)
-    t = threading.Thread(target=secure, args=(ip_addr,))
-    #t.start()
     draw.rectangle((0,0,width,height), outline=0, fill=0)
     qr = qrcode.QRCode(
             version=3,
@@ -355,6 +385,13 @@ if __name__ == '__main__':
     img = qr.make_image()
 
     fuelgauge.update()
+    secureThread = threading.Thread(target=secure)
+    secureThread.daemon = True
+    secureThread.start()
+
+    def quitThread():
+        quit = True
+        secureThread.stop()
     if config.model == config.MODEL_TAVBOT:
         # Draw a smiley
         top = 0
@@ -363,25 +400,27 @@ if __name__ == '__main__':
         draw.ellipse((100, top+12 , 100+6, 12+6), outline=255, fill=0)
         draw.ellipse((110, top+12 , 110+6, 12+6), outline=255, fill=0)
         draw.arc((100, 12, 116, 12+16), start=30, end=150, fill=255)
-        draw.text((65, 44), config.MOT2BOT_NAME+' bereit.',  font=font9, fill=display.DARK_RED)
+        draw.text((65, 40), config.MOT2BOT_NAME+' bereit.',  font=font9, fill=display.DARK_GREEN)
         draw.text((0, 78), ip_addr, font=font9, fill=display.ORANGE)
     else:
         draw.rectangle((65, 0, width-1, 24), outline=0, fill=0)
-        draw.text((65,  0), 'BAT: {0:5.2f} %'.format(fuelgauge.percent),  font=font9, fill=display.DARK_RED)
-        draw.text((65, 12), 'BAT: {0:5.2f} V'.format(fuelgauge.voltage),  font=font9, fill=display.DARK_RED)
+        draw.text((65,  0), 'BAT: {:5.2f} %'.format(fuelgauge.percent),  font=font9, fill=display.DARK_GREEN)
+        draw.text((65, 12), 'BAT: {:5.2f} V'.format(fuelgauge.voltage),  font=font9, fill=display.DARK_GREEN)
 
-    image.paste(img, (-1, -1));
+    image2 = img.convert('RGB').point(lambda p: p * 0.3)
+    image.paste(image2, (-1, -1))
     call("aplay -q /home/pi/pi2kf/bla.wav", shell=True)
     speak(config.MOT2BOT_NAME+" bereit.")
     speak("Meine EiPi-Adresse lautet: " + (ip_addr.replace("", " ")).replace(".", "punkt"))
-    image2 = image.point(lambda p: p * 0.5)
-    display.update(image2)
+    display.update(image)
 
-    try:
-        httpd.serve_forever()
-    except KeyboardInterrupt:
-        speak("Software manuell gestoppt!")
-        pass
-    except Exception:
-        pass
-    cleanup()
+    last_bat = 0.0
+    while True:
+        if time.time() > last_bat + 1.0:
+            fuelgauge.update()
+            draw.rectangle((65, 50, width-1, 70), outline=None, fill=0)
+            draw.text((65, 50), 'BAT: {:5.2f} %'.format(fuelgauge.percent),  font=font9, fill=display.DARK_GREEN)
+            draw.text((65, 60), 'BAT: {:5.2f} V'.format(fuelgauge.voltage),  font=font9, fill=display.DARK_GREEN)
+            display.update(image)
+            last_bat = time.time()
+        time.sleep(0.05)
