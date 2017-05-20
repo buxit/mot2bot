@@ -9,14 +9,17 @@ import Image
 import ImageDraw
 import ImageFont
 import csv
+import math
 import cv2
 import face
 import os
+import serial
 import qrcode
 import signal, os
 import socket, fcntl, struct
 import sys
 import time
+import monotonic
 from gpiozero import Button
 
 import config
@@ -89,6 +92,7 @@ num_to_label = {}
 maxlabel = 0
 shutdown = '0'
 beep=False
+lastReceived=-1
 
 if __name__ == '__main__':
     maxlabel=0
@@ -123,8 +127,9 @@ class MyHandler(BaseHTTPServer.BaseHTTPRequestHandler):
         s.send_header("Origin", "http://pi2kf.bux.at")
         s.end_headers()
     def do_GET (s):
+        #Save last time when package arrived
         """Respond to a GET request."""
-        global tVal, pVal, fuelgauge, image, blinkthread, beep
+        global tVal, pVal, fuelgauge, image, blinkthread, beep, lastReceived
 
         ti = time.time();
         s.send_response(200)
@@ -137,6 +142,10 @@ class MyHandler(BaseHTTPServer.BaseHTTPRequestHandler):
         cmds = dict(parse_qsl(urlparse(s.path).query))
         #print cmds
         cmd = cmds['cmd']
+        if(cmd=='acknowledge'):
+            if lastReceived == -1:
+                speak("Fernsteuerung verbunden!")
+            lastReceived=currentTimeMillis()
         if(cmd=='status'):
             s.wfile.write('{'+'"bat_perc":{:5.2f}, "bat_volt":{:5.2f}'.format(fuelgauge.percent, fuelgauge.voltage)+'}')
         if(cmd=='drive'):
@@ -268,6 +277,10 @@ class MyHandler(BaseHTTPServer.BaseHTTPRequestHandler):
         # HTTP send reply
         s.wfile.close()
 
+def currentTimeMillis():
+    #Returns the actual time in milliseconds
+    return int(round(time.time() * 1000))
+
 if __name__ == '__main__':
     pi2kf.init()
     #call("aplay -q /home/pi/pi2kf/bla.wav", shell=True)
@@ -316,35 +329,125 @@ if __name__ == '__main__':
     pi2kf.setServo(pan, pVal)
     pi2kf.setServo(tilt, tVal)
 
+    def startRemote():
+        global tVal, pVal
+        try:
+            global quit
+            print("Starting remote support...")
+            mAx = 511
+            ser = serial.Serial('/dev/ttyUSB0')
+            ser.baudrate = 57600
+            ser.timeout = 0.5
+            lastX = 0
+            lastY = 0
+            lastMode = 0
+            lastRcv = monotonic.monotonic()
+            while True:
+              try:
+                vals = []
+                inp = ser.readline()
+                if lastRcv + 0.5 < monotonic.monotonic():
+                    pi2kf.go(0, 0)
+                    print(str(lastRcv + 0.5) + ">" + str(monotonic.monotonic()))
+                    lastRcv = monotonic.monotonic()
+                    continue
+                inp = inp.split(" ")
+                x = int(inp[0])
+                y = int(inp[1])
+                x /= 511.0
+                y /= 511.0
+                leng = math.sqrt(x*x + y*y)
+                w = math.atan2(x, -y)
+                deg = w * 180/math.pi
+                q = w / math.pi
+                l = 0
+                r = 0
+                if q >= 0.0 and q < 0.5:
+                    l = 1
+                    r = 1 - (q * 4)
+                elif q >= 0.5 and q <= 1.0:
+                    l=-1
+                    r = 1 - ((q*4) - 2)
+                elif q >= -1.0 and q < -0.5:
+                    r = -1
+                    l = (q*4)+3
+                elif q >= -0.5 and q < 0.0:
+                    r = 1
+                    l = (q * 4) + 1
+                r *= leng
+                l *= leng
+                if lastX != x or lastY != y:
+                    if int(inp[4]) & 1:
+                      pi2kf.go(r * 100, l* 100)
+                      lastX = x
+                      lastY = y
+                if lastMode != inp[4]:
+                    pi2kf.go(0,0)
+                if int(inp[4]) & 2:
+                   go2 = int(inp[1]) / 511.0 * 100 * -1
+                   go1 = int(inp[3]) / 511.0 * 100 * -1
+                   pi2kf.go(go1, go2)
+
+                #cam
+                if not int(inp[4]) & 2:   
+                    x1 = int(inp[2])
+                    y1 = int(inp[3])
+                    if (abs(x1) > 10 or abs(y1) > 10):
+                        x1 /= -150.0
+                        y1 /= -150.0
+                        tVal += y1
+                        pVal += x1
+                        if pVal > 70:
+                            pVal = 70
+                        if pVal < -70:
+                            pVal = -70
+                        if tVal > 90:
+                            tVal = 90
+                        if tVal < -90:
+                            tVal = -90
+                        print("tVal={} pVal={}".format(tVal, pVal))
+                        pi2kf.setServo(pan, pVal)
+                        pi2kf.setServo(tilt, tVal)
+                    print("{} bla".format(inp[4]))
+                if int(inp[4]) & 0x08:
+                    tVal = tCenter
+                    pVal = pCenter
+                    pi2kf.setServo(pan, pVal)
+                    pi2kf.setServo(tilt, tVal)
+                lastMode = inp[4]
+                lastRcv = monotonic.monotonic()
+                                                                
+              except Exception, e:
+               print("Overriding...")
+               print(str(e))
+               continue
+           
+        except:
+            speak("Fernschteuerung nicht Verbunden.")
+            print("Remote Error!")
+
+    
     def shutdownButton():
         button_2 = Button(23, pull_up=True) 
         button_2.wait_for_press()
         speak("Herrunterfahren...")
         time.sleep(3)
+        quitThread()
         call("mpg123 -q /home/pi/pi2kf/Robot_dying.mp3", shell=True)
         call("/sbin/poweroff &", shell=True)
 
-    def secure():
-        ###global quit
-        while not quit:
-            try:
-                ip_addr = get_ip_address('wlan0')
-            except IOError:
-                try:
-                   ip_addr = get_ip_address('eth0')
-                except IOError:
-                   ip_addr = ('')
 
-            x = os.system("ping -c 1 " + ip_addr)
-            if x != 0:
-                pi2kf.stop()
-            time.sleep(1) 
     ip_addr = ''
     req=0
 
     buttonThread = threading.Thread(target=shutdownButton)
     buttonThread.daemon = True
     buttonThread.start()
+    
+    remoteThread = threading.Thread(target=startRemote)
+    remoteThread.daemon = True
+    remoteThread.start()
+
 
 
     while ip_addr == '':
@@ -385,13 +488,15 @@ if __name__ == '__main__':
     img = qr.make_image()
 
     fuelgauge.update()
-    secureThread = threading.Thread(target=secure)
-    secureThread.daemon = True
-    secureThread.start()
+
+
+
+
+                
 
     def quitThread():
         quit = True
-        secureThread.stop()
+        remoteThread.stop()
     if config.model == config.MODEL_TAVBOT:
         # Draw a smiley
         top = 0
