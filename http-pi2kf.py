@@ -350,12 +350,13 @@ if __name__ == '__main__':
               try:
                 vals = []
                 inp = ser.readline()
-                if lastRcv + 0.5 < monotonic.monotonic() and last == "remote":
+                print("Last: " + str(lastRcv) + ", from: " + lastPkg)
+                if lastRcv + 0.5 < monotonic.monotonic() and lastPkg == "remote":
                     pi2kf.go(0, 0)
                     print(str(lastRcv + 0.5) + ">" + str(monotonic.monotonic()))
                     lastRcv = monotonic.monotonic()
                     continue
-                elif lastRcv + 1 < monotonic.monotonic() and last == "web":
+                elif lastRcv + 1 < monotonic.monotonic() and lastPkg == "web":
                     pi2kf.go(0, 0)
                     lastRcv = monotonic.monotonic()
                     continue
