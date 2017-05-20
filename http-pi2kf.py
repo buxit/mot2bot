@@ -34,6 +34,7 @@ global secureThread
 # Define pins for Pan/Tilt
 pan = 0
 tilt = 1
+lastRcv = monotonic.monotonic()
 pVal = pCenter = config.pCenter
 tVal = tCenter = config.tCenter
 
@@ -93,6 +94,7 @@ maxlabel = 0
 shutdown = '0'
 beep=False
 lastReceived=-1
+lastPkg = "web"
 
 if __name__ == '__main__':
     maxlabel=0
@@ -129,8 +131,8 @@ class MyHandler(BaseHTTPServer.BaseHTTPRequestHandler):
     def do_GET (s):
         #Save last time when package arrived
         """Respond to a GET request."""
-        global tVal, pVal, fuelgauge, image, blinkthread, beep, lastReceived
-
+        global tVal, pVal, fuelgauge, image, blinkthread, beep, lastRcv, lastPkg
+        lastPkg = "web"
         ti = time.time();
         s.send_response(200)
         origin = s.headers.get('Origin')
@@ -274,8 +276,10 @@ class MyHandler(BaseHTTPServer.BaseHTTPRequestHandler):
                     speak('Da ist ein Gesicht, aber ich weiss nicht wer es sein könnte.')
             else:
                 speak("Ich erkenne leider kein Gesicht.")
+        lastRcv = monotonic.monotonic()
         # HTTP send reply
         s.wfile.close()
+        
 
 def currentTimeMillis():
     #Returns the actual time in milliseconds
@@ -330,9 +334,9 @@ if __name__ == '__main__':
     pi2kf.setServo(tilt, tVal)
 
     def startRemote():
-        global tVal, pVal
+        global tVal, pVal, lastRcv, lastRcv, lastPkg
         try:
-            global quit
+            global quit, lastRcv, lastPkg
             print("Starting remote support...")
             mAx = 511
             ser = serial.Serial('/dev/ttyUSB0')
@@ -346,9 +350,13 @@ if __name__ == '__main__':
               try:
                 vals = []
                 inp = ser.readline()
-                if lastRcv + 0.5 < monotonic.monotonic():
+                if lastRcv + 0.5 < monotonic.monotonic() and last == "remote":
                     pi2kf.go(0, 0)
                     print(str(lastRcv + 0.5) + ">" + str(monotonic.monotonic()))
+                    lastRcv = monotonic.monotonic()
+                    continue
+                elif lastRcv + 1 < monotonic.monotonic() and last == "web":
+                    pi2kf.go(0, 0)
                     lastRcv = monotonic.monotonic()
                     continue
                 inp = inp.split(" ")
@@ -416,7 +424,7 @@ if __name__ == '__main__':
                     pi2kf.setServo(tilt, tVal)
                 lastMode = inp[4]
                 lastRcv = monotonic.monotonic()
-                                                                
+                lastPkg = "remote"                                                
               except Exception, e:
                print("Overriding...")
                print(str(e))
