@@ -334,9 +334,8 @@ if __name__ == '__main__':
     pi2kf.setServo(tilt, tVal)
 
     def startRemote():
-        global tVal, pVal, lastRcv, lastRcv, lastPkg
+        global tVal, pVal, lastRcv, lastRcv, lastPkg, beep, blinkthread
         try:
-            global quit, lastRcv, lastPkg
             print("Starting remote support...")
             mAx = 511
             ser = serial.Serial('/dev/ttyUSB0')
@@ -425,7 +424,30 @@ if __name__ == '__main__':
                     pi2kf.setServo(tilt, tVal)
                 lastMode = inp[4]
                 lastRcv = monotonic.monotonic()
-                lastPkg = "remote"                                                
+                lastPkg = "remote" 
+
+                if int(inp[4]) & 0x10:
+                    if not beep:
+                        beep = True
+                        call("mpg123 --loop -1 --scale 3000 /home/pi/mot2bot/beep-beep.mp3 &", shell=True)
+                if int(inp[4]) & 0x20:
+                    if beep:
+                        beep = False
+                        call("killall mpg123", shell=True)
+
+                if int(inp[4]) & 0x40:
+                    if not blinkthread.isAlive():
+                        print("Starting Thread...")
+                        blinkthread.start()
+                        blinkthread.setBrightness(255)
+                        blinkthread.setBlinkSpeed(0.5)
+                if int(inp[4]) & 0x80:
+                    if blinkthread.isAlive():
+                        print("Stopping Thread")
+                        blinkthread.quit()
+                        blinkthread.join()
+                        blinkthread = pi2kf.BlinkThread()
+                                                                                                
               except Exception, e:
                print("Overriding...")
                print(str(e))
