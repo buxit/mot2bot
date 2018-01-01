@@ -21,6 +21,7 @@ import sys
 import time
 import monotonic
 from gpiozero import Button
+import sliplib
 
 import config
 import pi2kf
@@ -49,6 +50,8 @@ fuelgauge = pi2kf.FuelGauge(0x36)
 
 blinkthread = pi2kf.BlinkThread()
 blinkthread.daemon = True
+
+serial_driver = sliplib.Driver()
 
 p = Popen("espeak --stdout -v german-mbrola-5 -s 130 | aplay -q", shell=True, bufsize=bufsize, stdin=PIPE)
 def get_ip_address(ifname):
@@ -332,15 +335,14 @@ if __name__ == '__main__':
     pVal = pCenter
     pi2kf.setServo(pan, pVal)
     pi2kf.setServo(tilt, tVal)
+    light_on = False
 
     def startRemote():
-        global tVal, pVal, lastRcv, lastRcv, lastPkg
+        global tVal, pVal, lastRcv, lastRcv, lastPkg, beep, blinkthread, light_on
         try:
-            global quit, lastRcv, lastPkg
             print("Starting remote support...")
-            mAx = 511
             ser = serial.Serial('/dev/ttyUSB0')
-            ser.baudrate = 57600
+            ser.baudrate = 115200
             ser.timeout = 0.5
             lastX = 0
             lastY = 0
@@ -350,7 +352,16 @@ if __name__ == '__main__':
               try:
                 vals = []
                 inp = ser.readline()
-                print("Last: " + str(lastRcv) + ", from: " + lastPkg)
+                message = b'status\0'
+                message += struct.pack('ff', fuelgauge.percent, fuelgauge.voltage)
+                #print(serial_driver.send(message))
+                ser.write(serial_driver.send(message))
+                #print(inp)
+                #outp = ser.write('{:5.2f} {:5.2f}\n'.format(fuelgauge.percent, fuelgauge.voltage)) #  battery
+                #print("Last: " + str(lastRcv) + ", from: " + lastPkg)
+                inp = inp.split(" ")
+                if len(inp) < 5:
+                    continue
                 if lastRcv + 0.5 < monotonic.monotonic() and lastPkg == "remote":
                     pi2kf.go(0, 0)
                     print(str(lastRcv + 0.5) + ">" + str(monotonic.monotonic()))
@@ -360,7 +371,6 @@ if __name__ == '__main__':
                     pi2kf.go(0, 0)
                     lastRcv = monotonic.monotonic()
                     continue
-                inp = inp.split(" ")
                 x = int(inp[0])
                 y = int(inp[1])
                 x /= 511.0
@@ -371,6 +381,8 @@ if __name__ == '__main__':
                 q = w / math.pi
                 l = 0
                 r = 0
+                #print("x={:5.2f}, y={:5.2f} leng={:5.2f}, deg={:5.2f}, q={:5.2f}".format(x, y, leng, deg, q))
+                #continue
                 if q >= 0.0 and q < 0.5:
                     l = 1
                     r = 1 - (q * 4)
@@ -390,7 +402,7 @@ if __name__ == '__main__':
                       pi2kf.go(r * 100, l* 100)
                       lastX = x
                       lastY = y
-                if lastMode != inp[4]:
+                if lastMode != int(inp[4]):
                     pi2kf.go(0,0)
                 if int(inp[4]) & 2:
                    go2 = int(inp[1]) / 511.0 * 100 * -1
@@ -417,15 +429,56 @@ if __name__ == '__main__':
                         print("tVal={} pVal={}".format(tVal, pVal))
                         pi2kf.setServo(pan, pVal)
                         pi2kf.setServo(tilt, tVal)
-                    print("{} bla".format(inp[4]))
+                    #print("{} bla".format(inp[4]))
                 if int(inp[4]) & 0x08:
                     tVal = tCenter
                     pVal = pCenter
                     pi2kf.setServo(pan, pVal)
                     pi2kf.setServo(tilt, tVal)
-                lastMode = inp[4]
+                if int(inp[4]) & 0x200 and lastMode & 0x200 == 0:
+                    Popen(["/usr/bin/curl", 'localhost/cam/cmd_pipe.php?cmd=img'])
+                    call("aplay -q /home/pi/pi2kf/440Hz.wav &", shell=True)
+                lastMode = int(inp[4])
                 lastRcv = monotonic.monotonic()
-                lastPkg = "remote"                                                
+                lastPkg = "remote"
+
+                if int(inp[4]) & 0x10:
+                    if not beep:
+                        beep = True
+                        call("mpg123 --loop -1 --scale 3000 /home/pi/mot2bot/beep-beep.mp3 &", shell=True)
+                if int(inp[4]) & 0x20:
+                    if beep:
+                        beep = False
+                        call("killall mpg123", shell=True)
+
+                if int(inp[4]) & 0x40:
+                    if not light_on:
+                        pi2kf.setLed(True)
+                    light_on = True
+                else:
+                    if light_on:
+                        pi2kf.setLed(False)
+                    light_on = False
+                    #if not blinkthread.isAlive():
+                    #    print("Starting Thread...")
+                    #    blinkthread.start()
+                    #    blinkthread.setBrightness(255)
+                    #    blinkthread.setBlinkSpeed(0.5)
+                if int(inp[4]) & 0x80:
+                    if light_on:
+                        pi2kf.setLed(False)
+                    light_on = False
+                    #if blinkthread.isAlive():
+                    #    print("Stopping Thread")
+                    #    blinkthread.quit()
+                    #    blinkthread.join()
+                    #    blinkthread = pi2kf.BlinkThread()
+                if int(inp[4]) & 0x100:
+                    speak("Herrunterfahren...")
+                    time.sleep(3)
+                    call("mpg123 -q /home/pi/pi2kf/Robot_dying.mp3", shell=True)
+                    call("/sbin/poweroff &", shell=True)
+
               except Exception, e:
                print("Overriding...")
                print(str(e))
