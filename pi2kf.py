@@ -99,7 +99,7 @@ def init():
     # Initialise the PCA9685 PWM device using the default address
     try:
         pwm = PWM(0x60, debug = False)
-        pwm.setPWMFreq(180)  # Set frequency to 60 Hz
+        pwm.setPWMFreq(60)
     except:
         print "can't set PWM frequency!"
 
@@ -113,7 +113,6 @@ def cleanup():
     stop()
     time.sleep(1)
     #GPIO.cleanup()
-
 
 # version(). Returns 1 pi2kf, 2 for tavbot
 def version():
@@ -134,6 +133,11 @@ def stop():
 
 # go(leftSpeed, rightSpeed): controls motors in both directions independently using different positive/negative speeds. -100<= leftSpeed,rightSpeed <= 100
 def go(leftSpeed, rightSpeed):
+    global pwm
+    l = min(abs(leftSpeed), abs(rightSpeed))
+    freq = 1940 * ((l/100.0) ** 3)  + 60
+    print("FREQ: {:5.2f}".format(freq))
+    pwm.setPWMFreq(freq)
     mL.setSpeed(int(abs(leftSpeed*2.53)))
     mR.setSpeed(int(abs(rightSpeed*2.53)))
     print(int(abs(leftSpeed*2.53)))
