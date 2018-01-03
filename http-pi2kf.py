@@ -1,4 +1,4 @@
-#!/usr/bin/python 
+#!/usr/bin/python
 # coding=utf-8
 from datetime import datetime
 from subprocess import call, Popen, PIPE
@@ -22,6 +22,7 @@ import time
 import monotonic
 from gpiozero import Button
 import sliplib
+from optparse import OptionParser
 
 import config
 import pi2kf
@@ -89,7 +90,7 @@ def speak(words):
     print ("speak: " + words)
     p.stdin.write(words+"\n")
 
-model = cv2.createEigenFaceRecognizer()
+model = None
 camera = config.get_camera()
 label_to_num = {}
 num_to_label = {}
@@ -98,19 +99,6 @@ shutdown = '0'
 beep=False
 lastReceived=-1
 lastPkg = "web"
-
-if __name__ == '__main__':
-    maxlabel=0
-    for key, val in csv.reader(open("labels.csv")):
-        num_to_label[val] = key
-        label_to_num[key] = val
-        if val > maxlabel:
-            maxlabel = val
-    print label_to_num
-    print num_to_label
-    print 'Loading training data...'
-    model.load(config.TRAINING_FILE)
-    print 'loaded.'
 
 def httpThreadFunc():
     server_class = BaseHTTPServer.HTTPServer
@@ -121,6 +109,7 @@ def httpThreadFunc():
     except KeyboardInterrupt:
         quitThread()
     except Exception:
+        traceback.print_exc()
         quitThread()
     cleanup()
 
@@ -174,7 +163,7 @@ class MyHandler(BaseHTTPServer.BaseHTTPRequestHandler):
             Popen(["/usr/bin/curl", 'localhost/cam/cmd_pipe.php?cmd=img'])
             call("aplay -q /home/pi/pi2kf/440Hz.wav &", shell=True)
         if(cmd=="sound-9"):
-            call("mpg123 -q /home/pi/pi2kf/Robot_dying.mp3 &", shell=True)
+            call("mpg123 -q snd/Robot_dying.mp3 &", shell=True)
         if(cmd=="speak"):
             speak(cmds['words'])
             #call("espeak --stdout -v german '"+cmds['words']+"' | aplay -q &", shell=True)
@@ -282,84 +271,55 @@ class MyHandler(BaseHTTPServer.BaseHTTPRequestHandler):
         lastRcv = monotonic.monotonic()
         # HTTP send reply
         s.wfile.close()
-        
+
 
 def currentTimeMillis():
     #Returns the actual time in milliseconds
     return int(round(time.time() * 1000))
 
-if __name__ == '__main__':
-    pi2kf.init()
-    #call("aplay -q /home/pi/pi2kf/bla.wav", shell=True)
-    speak("System gestartet!,")
-    speak("Warten auf Netzwerk!")
-    httpThread = threading.Thread(target=httpThreadFunc)
-    httpThread.daemon = True
-    httpThread.start()
+def startRemote():
+    global tVal, pVal, lastRcv, lastPkg, beep, blinkthread, light_on
+    try:
+        print("Starting remote support...")
+        ser = serial.Serial('/dev/ttyUSB0', 115200, timeout=0.5)
+        lastX = 0
+        lastY = 0
+        lastMode = 0
+        #time.sleep(0.5)
+        lastRcv = monotonic.monotonic()
+        inp = ''
+        while inp != 'm2b ready.':
+            inp = ser.readline().strip()
+            print("wait for ready: '{}'".format(inp))
 
-    image = display.init()
+        time.sleep(0.1)
+        snd_files = sorted(os.listdir('snd/'))
+        print(snd_files)
+        snd = 0
+        for snd_file in snd_files:
+            snd += 1
+            snd_file = snd_file.replace('.mp3', '')
+            message = b'm2bsnd\0'
+            message += struct.pack('bb', snd, min(len(snd_file),15)+1)
+            message += snd_file[:15] + '\0'
+            ser.write(serial_driver.send(message))
+            ser.flush()
+            inp = ser.readline().rstrip()
+            print(inp)
 
-    width = display.width
-    height = display.width
-
-    # Get drawing object to draw on image.
-    draw = ImageDraw.Draw(image)
-
-    # Draw a black filled box to clear the image.
-    draw.rectangle((0,0,width,height), outline=0, fill=0)
-
-    #padding = 0
-    font22 = ImageFont.truetype('/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf', 22)
-    font9  = ImageFont.truetype('/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf', 9)
-    font25 = ImageFont.truetype('/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf', 25)
-    #Draw Mot2Bot
-    draw.text((10,20), 'mot2bot', font=font25, fill=255)
-    display.update(image)
-
-    #draw.text((0, -5), 'Warten auf',  font=font22, fill=255)
-    #draw.text((0, 25), 'Netzwerk ...', font=font22, fill=255)
-    #draw.text((0,55), str(300), font=font9, fill=255)
-
-
-
-    # Display image.
-    #disp.image(image)
-    #idata = image.tostring()
-    #pgimage = pygame.image.fromstring(idata, image.size, image.mode)
-    #surf.blit(pgimage, (0,32))
-    display.update(image)
-    #disp.display()
-
-    #Center Camera:
-    tVal = tCenter
-    pVal = pCenter
-    pi2kf.setServo(pan, pVal)
-    pi2kf.setServo(tilt, tVal)
-    light_on = False
-
-    def startRemote():
-        global tVal, pVal, lastRcv, lastPkg, beep, blinkthread, light_on
-        try:
-            print("Starting remote support...")
-            ser = serial.Serial('/dev/ttyUSB0')
-            ser.baudrate = 115200
-            ser.timeout = 0.5
-            lastX = 0
-            lastY = 0
-            lastMode = 0
-            lastRcv = monotonic.monotonic()
-            while True:
-              try:
+        while True:
+            try:
                 vals = []
-                inp = ser.readline()
+                s_line = ser.readline().strip()
                 message = b'status\0'
                 message += struct.pack('ff', fuelgauge.percent, fuelgauge.voltage)
                 #print(serial_driver.send(message))
                 ser.write(serial_driver.send(message))
-                print(inp)
+                if s_line != '':
+                    print(s_line)
                 #outp = ser.write('{:5.2f} {:5.2f}\n'.format(fuelgauge.percent, fuelgauge.voltage)) #  battery
                 #print("Last: " + str(lastRcv) + ", from: " + lastPkg)
-                inp = inp.split(" ")
+                inp = s_line.split(" ")
                 if len(inp) >= 5:
                     lastRcv = monotonic.monotonic()
                 if lastRcv + 0.5 < monotonic.monotonic() and lastPkg == "remote":
@@ -410,7 +370,7 @@ if __name__ == '__main__':
                    pi2kf.go(go1, go2)
 
                 #cam
-                if not int(inp[4]) & 2:   
+                if not int(inp[4]) & 2:
                     x1 = int(inp[2])
                     y1 = int(inp[3])
                     if (abs(x1) > 10 or abs(y1) > 10):
@@ -444,7 +404,7 @@ if __name__ == '__main__':
                 if int(inp[4]) & 0x10:
                     if not beep:
                         beep = True
-                        call("mpg123 --loop -1 --scale 3000 /home/pi/mot2bot/beep-beep.mp3 &", shell=True)
+                        call("mpg123 --loop -1 --scale 3000 snd/beep-beep.mp3 &", shell=True)
                 if int(inp[4]) & 0x20:
                     if beep:
                         beep = False
@@ -475,28 +435,100 @@ if __name__ == '__main__':
                 if int(inp[4]) & 0x100:
                     speak("Herrunterfahren...")
                     time.sleep(3)
-                    call("mpg123 -q /home/pi/pi2kf/Robot_dying.mp3", shell=True)
+                    call("mpg123 -q snd/Robot_dying.mp3", shell=True)
                     call("/sbin/poweroff &", shell=True)
+            except Exception, e:
+                traceback.print_exc()
+                print("Overriding...")
+                print(str(e))
+                continue
+    except:
+        traceback.print_exc()
+        speak("Fernschteuerung nicht Verbunden.")
+        print("Remote Error!")
 
-              except Exception, e:
-               print("Overriding...")
-               print(str(e))
-               continue
-           
-        except:
-            speak("Fernschteuerung nicht Verbunden.")
-            print("Remote Error!")
+def quitThread():
+    quit = True
+    remoteThread.stop()
 
-    
-    def shutdownButton():
-        button_2 = Button(23, pull_up=True) 
-        button_2.wait_for_press()
-        speak("Herrunterfahren...")
-        time.sleep(3)
-        quitThread()
-        call("mpg123 -q /home/pi/pi2kf/Robot_dying.mp3", shell=True)
-        call("/sbin/poweroff &", shell=True)
+def shutdownButton():
+    button_2 = Button(23, pull_up=True)
+    button_2.wait_for_press()
+    speak("Herrunterfahren...")
+    time.sleep(3)
+    quitThread()
+    call("mpg123 -q snd/Robot_dying.mp3", shell=True)
+    call("/sbin/poweroff &", shell=True)
 
+
+if __name__ == '__main__':
+    usage = "usage: %prog [options]"
+    parser = OptionParser(usage)
+    parser.add_option("-f", "--fast", action="store_true", dest="fast")
+    parser.add_option("-v", "--verbose", action="store_true", dest="verbose")
+    (options, args) = parser.parse_args()
+
+    if not options.fast:
+        maxlabel=0
+        face.init()
+        model = cv2.createEigenFaceRecognizer()
+        for key, val in csv.reader(open("labels.csv")):
+            num_to_label[val] = key
+            label_to_num[key] = val
+            if val > maxlabel:
+                maxlabel = val
+        print label_to_num
+        print num_to_label
+        print 'Loading training data...'
+        model.load(config.TRAINING_FILE)
+        print 'loaded.'
+
+    pi2kf.init()
+    #call("aplay -q /home/pi/pi2kf/bla.wav", shell=True)
+    if not options.fast:
+        speak("System gestartet!,")
+        speak("Warten auf Netzwerk!")
+    httpThread = threading.Thread(target=httpThreadFunc)
+    httpThread.daemon = True
+    httpThread.start()
+
+    image = display.init()
+
+    width = display.width
+    height = display.width
+
+    # Get drawing object to draw on image.
+    draw = ImageDraw.Draw(image)
+
+    # Draw a black filled box to clear the image.
+    draw.rectangle((0,0,width,height), outline=0, fill=0)
+
+    #padding = 0
+    font22 = ImageFont.truetype('/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf', 22)
+    font9  = ImageFont.truetype('/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf', 9)
+    font25 = ImageFont.truetype('/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf', 25)
+    #Draw Mot2Bot
+    draw.text((10,20), 'mot2bot', font=font25, fill=255)
+    display.update(image)
+
+    #draw.text((0, -5), 'Warten auf',  font=font22, fill=255)
+    #draw.text((0, 25), 'Netzwerk ...', font=font22, fill=255)
+    #draw.text((0,55), str(300), font=font9, fill=255)
+
+    # Display image.
+    #disp.image(image)
+    #idata = image.tostring()
+    #pgimage = pygame.image.fromstring(idata, image.size, image.mode)
+    #surf.blit(pgimage, (0,32))
+    display.update(image)
+    #disp.display()
+
+    #Center Camera:
+    tVal = tCenter
+    pVal = pCenter
+    pi2kf.setServo(pan, pVal)
+    pi2kf.setServo(tilt, tVal)
+    light_on = False
 
     ip_addr = ''
     req=0
@@ -504,12 +536,10 @@ if __name__ == '__main__':
     buttonThread = threading.Thread(target=shutdownButton)
     buttonThread.daemon = True
     buttonThread.start()
-    
+
     remoteThread = threading.Thread(target=startRemote)
     remoteThread.daemon = True
     remoteThread.start()
-
-
 
     while ip_addr == '':
         req=req + 1
@@ -550,14 +580,6 @@ if __name__ == '__main__':
 
     fuelgauge.update()
 
-
-
-
-                
-
-    def quitThread():
-        quit = True
-        remoteThread.stop()
     if config.model == config.MODEL_TAVBOT:
         # Draw a smiley
         top = 0
@@ -575,9 +597,10 @@ if __name__ == '__main__':
 
     image2 = img.convert('RGB').point(lambda p: p * 0.3)
     image.paste(image2, (-1, -1))
-    call("aplay -q /home/pi/pi2kf/bla.wav", shell=True)
-    speak(config.MOT2BOT_NAME+" bereit.")
-    speak("Meine EiPi-Adresse lautet: " + (ip_addr.replace("", " ")).replace(".", "punkt"))
+    if not options.fast:
+        call("aplay -q /home/pi/pi2kf/bla.wav", shell=True)
+        speak(config.MOT2BOT_NAME+" bereit.")
+        speak("Meine EiPi-Adresse lautet: " + (ip_addr.replace("", " ")).replace(".", "punkt"))
     display.update(image)
 
     last_bat = 0.0
