@@ -10,8 +10,6 @@ import ImageDraw
 import ImageFont
 import csv
 import math
-import cv2
-import face
 import os
 import serial
 import qrcode
@@ -20,6 +18,7 @@ import socket, fcntl, struct
 import sys
 import time
 import monotonic
+import traceback
 from gpiozero import Button
 import sliplib
 from optparse import OptionParser
@@ -30,7 +29,6 @@ import display
 
 HOST_NAME = ''		# listen on this address
 PORT_NUMBER = 8888	# listen on this port
-global quit
 quit = False
 global secureThread
 # Define pins for Pan/Tilt
@@ -65,6 +63,7 @@ def get_ip_address(ifname):
 
 def soundAnnounce():
     call("aplay -q /home/pi/pi2kf/bla.wav", shell=True)
+
 def cleanup():
     global blinkthread
     p.communicate()
@@ -79,9 +78,10 @@ def cleanup():
     print "done"
 
 def handler(signum, frame):
-    print 'Signal handler called with signal', signum
+    global quit
+    print('received signal {}, quit.'.format(signum))
+    quit = True
     httpd.server_close()
-    #cleanup()
 
 # Set the signal handler and a 5-second alarm
 signal.signal(signal.SIGTERM, handler)
@@ -101,17 +101,20 @@ lastReceived=-1
 lastPkg = "web"
 
 def httpThreadFunc():
+    global httpd, quit
     server_class = BaseHTTPServer.HTTPServer
     httpd = server_class((HOST_NAME, PORT_NUMBER), MyHandler)
     print "Server Starts - %s:%s" % (HOST_NAME, PORT_NUMBER)
     try:
         httpd.serve_forever()
     except KeyboardInterrupt:
-        quitThread()
-    except Exception:
-        traceback.print_exc()
-        quitThread()
-    cleanup()
+        print("httpThreadFunc() KeyboardInterrupt")
+    except Exception as e:
+        if not quit:
+            print(e.args)
+            print("httpThreadFunc() Exception")
+            traceback.print_exc()
+    quitThread()
 
 class MyHandler(BaseHTTPServer.BaseHTTPRequestHandler):
     def do_HEAD(s):
@@ -123,7 +126,7 @@ class MyHandler(BaseHTTPServer.BaseHTTPRequestHandler):
     def do_GET (s):
         #Save last time when package arrived
         """Respond to a GET request."""
-        global tVal, pVal, fuelgauge, image, blinkthread, beep, lastRcv, lastPkg
+        global tVal, pVal, fuelgauge, image, blinkthread, beep, lastRcv, lastPkg, quit
         lastPkg = "web"
         ti = time.time();
         s.send_response(200)
@@ -285,14 +288,12 @@ def startRemote():
         lastX = 0
         lastY = 0
         lastMode = 0
-        #time.sleep(0.5)
         lastRcv = monotonic.monotonic()
         inp = ''
         while inp != 'm2b ready.':
             inp = ser.readline().strip()
             print("wait for ready: '{}'".format(inp))
 
-        time.sleep(0.1)
         snd_files = sorted(os.listdir('snd/'))
         print(snd_files)
         snd = 0
@@ -448,8 +449,9 @@ def startRemote():
         print("Remote Error!")
 
 def quitThread():
+    global quit
     quit = True
-    remoteThread.stop()
+    #remoteThread.stop()
 
 def shutdownButton():
     button_2 = Button(23, pull_up=True)
@@ -460,7 +462,6 @@ def shutdownButton():
     call("mpg123 -q snd/Robot_dying.mp3", shell=True)
     call("/sbin/poweroff &", shell=True)
 
-
 if __name__ == '__main__':
     usage = "usage: %prog [options]"
     parser = OptionParser(usage)
@@ -469,6 +470,8 @@ if __name__ == '__main__':
     (options, args) = parser.parse_args()
 
     if not options.fast:
+        import cv2
+        import face
         maxlabel=0
         face.init()
         model = cv2.createEigenFaceRecognizer()
@@ -564,7 +567,9 @@ if __name__ == '__main__':
                 ip_addr = get_ip_address('eth0')
             except IOError:
                 ip_addr = ('')
-        time.sleep(1)
+        if ip_addr == '':
+            time.sleep(1)
+
     draw.rectangle((0,0,width,height), outline=0, fill=0)
     qr = qrcode.QRCode(
             version=3,
@@ -604,12 +609,23 @@ if __name__ == '__main__':
     display.update(image)
 
     last_bat = 0.0
-    while True:
-        if time.time() > last_bat + 1.0:
-            fuelgauge.update()
-            draw.rectangle((65, 50, width-1, 70), outline=None, fill=0)
-            draw.text((65, 50), 'BAT: {:5.2f} %'.format(fuelgauge.percent),  font=font9, fill=display.DARK_GREEN)
-            draw.text((65, 60), 'BAT: {:5.2f} V'.format(fuelgauge.voltage),  font=font9, fill=display.DARK_GREEN)
-            display.update(image)
-            last_bat = time.time()
-        time.sleep(0.05)
+    try:
+        while not quit:
+            if time.time() > last_bat + 1.0:
+                fuelgauge.update()
+                draw.rectangle((65, 50, width-1, 70), outline=None, fill=0)
+                draw.text((65, 50), 'BAT: {:5.2f} %'.format(fuelgauge.percent),  font=font9, fill=display.DARK_GREEN)
+                draw.text((65, 60), 'BAT: {:5.2f} V'.format(fuelgauge.voltage),  font=font9, fill=display.DARK_GREEN)
+                display.update(image)
+                last_bat = time.time()
+            time.sleep(0.05)
+    except KeyboardInterrupt:
+        print("main KeyboardInterrupt")
+        quitThread()
+    except Exception:
+        print("main Exception")
+        traceback.print_exc()
+        quitThread()
+
+    httpd.server_close()
+    cleanup()
