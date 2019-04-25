@@ -136,12 +136,12 @@ def go(leftSpeed, rightSpeed):
     global pwm
     l = min(abs(leftSpeed), abs(rightSpeed))
     freq = 1940 * ((l/100.0) ** 3)  + 60
-    print("FREQ: {:5.2f}".format(freq))
     pwm.setPWMFreq(freq)
     mL.setSpeed(int(abs(leftSpeed*2.53)))
     mR.setSpeed(int(abs(rightSpeed*2.53)))
-    print(int(abs(leftSpeed*2.53)))
-    print(int(abs(rightSpeed*2.53)))
+    #print("FREQ: {:5.2f}".format(freq))
+    #print(int(abs(leftSpeed*2.53)))
+    #print(int(abs(rightSpeed*2.53)))
     mL.run(Adafruit_MotorHAT.FORWARD if leftSpeed > 0 else Adafruit_MotorHAT.BACKWARD)
     mR.run(Adafruit_MotorHAT.FORWARD if rightSpeed > 0 else Adafruit_MotorHAT.BACKWARD)
     if leftSpeed == 0:
@@ -205,10 +205,11 @@ def getSwitch():
 # servod --pcm --idle-timeout=400 --p1pins="11,12"
 
 def setServo(pin, degrees):
-    #print pin, degrees
-    pinString = "echo " + str(pin) + "=" + str(50+ ((90 - degrees) * 200 / 180)) + " > /dev/servoblaster"
+    #pinString = "echo " + str(pin) + "=" + str(((degrees+90)*0.001)) + " > /dev/pi-blaster"
+    pinString = str(pin) + "=" + str(50+ ((90 - degrees) * 200 / 180))
     #print (pinString)
-    os.system(pinString)
+    with open('/dev/servoblaster', 'w') as servoblaster:
+        servoblaster.write(pinString + "\n")
 
 class FuelGauge:
     def __init__(self, address):

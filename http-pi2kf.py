@@ -316,8 +316,8 @@ def startRemote():
                 message += struct.pack('ff', fuelgauge.percent, fuelgauge.voltage)
                 #print(serial_driver.send(message))
                 ser.write(serial_driver.send(message))
-                if s_line != '':
-                    print(s_line)
+                #if s_line != '':
+                #    print(s_line)
                 #outp = ser.write('{:5.2f} {:5.2f}\n'.format(fuelgauge.percent, fuelgauge.voltage)) #  battery
                 #print("Last: " + str(lastRcv) + ", from: " + lastPkg)
                 inp = s_line.split(" ")
@@ -343,17 +343,16 @@ def startRemote():
                 l = 0
                 r = 0
                 #print("x={:5.2f}, y={:5.2f} leng={:5.2f}, deg={:5.2f}, q={:5.2f}".format(x, y, leng, deg, q))
-                #continue
-                if q >= 0.0 and q < 0.5:
+                if q > 0.0 and q <= 0.5:
                     l = 1
                     r = 1 - (q * 4)
-                elif q >= 0.5 and q <= 1.0:
+                elif q > 0.5 and q <= 1.0:
                     l=-1
                     r = 1 - ((q*4) - 2)
                 elif q >= -1.0 and q < -0.5:
                     r = -1
                     l = (q*4)+3
-                elif q >= -0.5 and q < 0.0:
+                elif q >= -0.5 and q <= 0.0:
                     r = 1
                     l = (q * 4) + 1
                 r *= leng
