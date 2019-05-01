@@ -69,7 +69,8 @@ mR = mh.getMotor(2)
 
 
 # Import all necessary libraries
-import RPi.GPIO as GPIO, sys, threading, time, os
+#import RPi.GPIO as GPIO
+import sys, threading, time, os
 from Adafruit_PWM_Servo_Driver import PWM
 
 # Define Type of pi2kf

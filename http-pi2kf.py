@@ -19,8 +19,9 @@ import sys
 import time
 import monotonic
 import traceback
-from gpiozero import Button
+#from gpiozero import Button
 import sliplib
+import roboctl
 from optparse import OptionParser
 
 import config
@@ -133,78 +134,115 @@ class MyHandler(BaseHTTPServer.BaseHTTPRequestHandler):
         origin = s.headers.get('Origin')
         if origin:
             s.send_header("Origin", origin)
-        s.send_header("Content-type", "text/html")
-        s.send_header("Access-Control-Allow-Origin", "*")
-        s.end_headers()
-        cmds = dict(parse_qsl(urlparse(s.path).query))
-        #print cmds
-        cmd = cmds['cmd']
-        if(cmd=='acknowledge'):
-            if lastReceived == -1:
-                speak("Fernsteuerung verbunden!")
-            lastReceived=currentTimeMillis()
-        if(cmd=='status'):
-            s.wfile.write('{'+'"bat_perc":{:5.2f}, "bat_volt":{:5.2f}'.format(fuelgauge.percent, fuelgauge.voltage)+'}')
-        if(cmd=='drive'):
-            left = float(cmds['l'])
-            right = float(cmds['r'])
-            pi2kf.go(left*100.0, right*100.0)
-        if(cmd=='stop'):
-            pi2kf.stop()
-        if(cmd=='cam-center'):
-            tVal = tCenter
-            pVal = pCenter
-            pi2kf.setServo(pan, pVal)
-            pi2kf.setServo(tilt, tVal)
-        if(cmd=='cam-turn'):
-            tVal += float(cmds['t'])
-            pVal += float(cmds['p'])
-            pi2kf.setServo(pan, pVal)
-            pi2kf.setServo(tilt, tVal)
-            print pVal, tVal
-        if(cmd=='cam-snapshot'):
-            Popen(["/usr/bin/curl", 'localhost/cam/cmd_pipe.php?cmd=img'])
-            call("aplay -q /home/pi/pi2kf/440Hz.wav &", shell=True)
-        if(cmd=="sound-9"):
-            call("mpg123 -q snd/Robot_dying.mp3 &", shell=True)
-        if(cmd=="speak"):
-            speak(cmds['words'])
-            #call("espeak --stdout -v german '"+cmds['words']+"' | aplay -q &", shell=True)
-        if(cmd=="shutdown"):
-            shutdown = '1'
-            try:
-                quit = True
-                secureThread.stop()
-            except:
-                pass
-            speak("Herrunterfahren...")
-            time.sleep(3)
-            call("mpg123 -q /home/pi/pi2kf/Robot_dying.mp3", shell=True)
-            call("/sbin/poweroff &", shell=True)
-        if(cmd=="toggle-ledblink"):
-            print("Processing LED Command...")
-            if not blinkthread.isAlive():
-                print("Starting Thread...")
-                blinkthread.start()
-                blinkthread.setBrightness(255)
-                blinkthread.setBlinkSpeed(0.5)
-            else:
-                print("Stopping Thread")
-                blinkthread.quit()
-                blinkthread.join()
-                blinkthread = pi2kf.BlinkThread()
-        if(cmd=="toggle-beep"):
-            if beep==True:
+            s.send_header("Content-type", "text/html")
+            s.send_header("Access-Control-Allow-Origin", "*")
+            s.end_headers()
+            cmds = dict(parse_qsl(urlparse(s.path).query))
+            #print cmds
+            cmd = cmds['cmd']
+            if(cmd=='acknowledge'):
+                if lastReceived == -1:
+                    speak("Fernsteuerung verbunden!")
+                lastReceived=currentTimeMillis()
+            if(cmd=='status'):
+                s.wfile.write('{'+'"bat_perc":{:5.2f}, "bat_volt":{:5.2f}'.format(fuelgauge.percent, fuelgauge.voltage)+'}')
+            if(cmd=='drive'):
+                left = float(cmds['l'])
+                right = float(cmds['r'])
+                pi2kf.go(left*100.0, right*100.0)
+            if(cmd=='stop'):
+                pi2kf.stop()
+            if(cmd=='cam-center'):
+                tVal = tCenter
+                pVal = pCenter
+                pi2kf.setServo(pan, pVal)
+                pi2kf.setServo(tilt, tVal)
+            if(cmd=='cam-turn'):
+                tVal += float(cmds['t'])
+                pVal += float(cmds['p'])
+                pi2kf.setServo(pan, pVal)
+                pi2kf.setServo(tilt, tVal)
+                print pVal, tVal
+            if(cmd=='cam-snapshot'):
+                Popen(["/usr/bin/curl", 'localhost/cam/cmd_pipe.php?cmd=img'])
+                call("aplay -q /home/pi/pi2kf/440Hz.wav &", shell=True)
+            if(cmd=="sound-9"):
+                call("mpg123 -q snd/Robot_dying.mp3 &", shell=True)
+            if(cmd=="speak"):
+                speak(cmds['words'])
+                #call("espeak --stdout -v german '"+cmds['words']+"' | aplay -q &", shell=True)
+            if(cmd=="shutdown"):
+                shutdown = '1'
+                try:
+                    quit = True
+                    secureThread.stop()
+                except:
+                    pass
+                speak("Herrunterfahren...")
+                time.sleep(3)
+                call("mpg123 -q /home/pi/pi2kf/Robot_dying.mp3", shell=True)
+                call("/sbin/poweroff &", shell=True)
+            if(cmd=="toggle-ledblink"):
+                print("Processing LED Command...")
+                if not blinkthread.isAlive():
+                    print("Starting Thread...")
+                    blinkthread.start()
+                    blinkthread.setBrightness(255)
+                    blinkthread.setBlinkSpeed(0.5)
+                else:
+                    print("Stopping Thread")
+                    blinkthread.quit()
+                    blinkthread.join()
+                    blinkthread = pi2kf.BlinkThread()
+            if(cmd=="toggle-beep"):
+                if beep==True:
+                    call("killall mpg123", shell=True)
+                    beep=False
+                else:
+                    call("mpg123 --loop -1 --scale 3000 /home/pi/mot2bot/beep-beep.mp3 &", shell=True)
+                    beep=True
+            if(cmd=="face-learn"):
+                if not 'name' in cmds:
+                    speak('Ich brauche einen Namen zum lernen!');
+                else:
+                    name = cmds['name'].title()
+                    ti = time.time();
+                    fimage = camera.read()
+                    print time.time()-ti, 'read()';
+                    ti = time.time();
+                    # Convert image to grayscale.
+                    fimage = cv2.cvtColor(fimage, cv2.COLOR_RGB2GRAY)
+                    print time.time()-ti, 'cvtColor()';
+                    ti = time.time();
+                    # Get coordinates of single face in captured image.
+                    result = face.detect_single(fimage)
+                    print time.time()-ti, 'detectSingle()';
+                    if result is not None:
+                        x, y, w, h = result
+                        ti = time.time();
+                        # Crop and resize image to face.
+                        crop = face.resize(face.crop(fimage, x, y, w, h))
+                        print time.time()-ti, 'resize()';
+                        ti = time.time();
+                        fulldir = os.path.join(config.POSITIVE_DIR, name)
+                        if not os.path.exists(fulldir):
+                            os.makedirs(fulldir)
+                        filename = os.path.join(fulldir, '{0:%Y-%m-%d_%H%M%S}.pgm'.format(datetime.now()))
+                        cv2.imwrite(filename, crop)
+                        speak('Gesicht von {0} gespeichert.'.format(name))
+                    else:
+                        speak("Ich erkenne leider kein Gesicht.")
+            if(cmd=="face-train"):
+                face.train(model, num_to_label, label_to_num, speak)
+                print label_to_num
+                print num_to_label
+            if(cmd=="musicOn"):
+                call("mpg123 /home/pi/01-* &", shell=True)
+            if(cmd=="musicOff"):
                 call("killall mpg123", shell=True)
-                beep=False
-            else:
-                call("mpg123 --loop -1 --scale 3000 /home/pi/mot2bot/beep-beep.mp3 &", shell=True)
-                beep=True
-        if(cmd=="face-learn"):
-            if not 'name' in cmds:
-                speak('Ich brauche einen Namen zum lernen!');
-            else:
-                name = cmds['name'].title()
+            if(cmd=="face"):
+                print label_to_num
+                print num_to_label
                 ti = time.time();
                 fimage = camera.read()
                 print time.time()-ti, 'read()';
@@ -223,58 +261,20 @@ class MyHandler(BaseHTTPServer.BaseHTTPRequestHandler):
                     crop = face.resize(face.crop(fimage, x, y, w, h))
                     print time.time()-ti, 'resize()';
                     ti = time.time();
-                    fulldir = os.path.join(config.POSITIVE_DIR, name)
-                    if not os.path.exists(fulldir):
-                        os.makedirs(fulldir)
-                    filename = os.path.join(fulldir, '{0:%Y-%m-%d_%H%M%S}.pgm'.format(datetime.now()))
-                    cv2.imwrite(filename, crop)
-                    speak('Gesicht von {0} gespeichert.'.format(name))
+                    # Test face against model.
+                    label, confidence = model.predict(crop)
+                    print time.time()-ti, 'predict()';
+                    print '\nSehe Gesicht von {0} "{1}", Sicherheit={2} (niedriger ist besser).'.format(label,num_to_label[str(label)], confidence)
+                    if confidence < config.POSITIVE_THRESHOLD:
+                        print 'Erkannt!'
+                        speak("Hallo {0}! Ich habe dich erkannt!".format(num_to_label[str(label)]))
+                    else:
+                        speak('Da ist ein Gesicht, aber ich weiss nicht wer es sein könnte.')
                 else:
                     speak("Ich erkenne leider kein Gesicht.")
-        if(cmd=="face-train"):
-            face.train(model, num_to_label, label_to_num, speak)
-            print label_to_num
-            print num_to_label
-        if(cmd=="musicOn"):
-            call("mpg123 /home/pi/01-* &", shell=True)
-        if(cmd=="musicOff"):
-            call("killall mpg123", shell=True)
-        if(cmd=="face"):
-            print label_to_num
-            print num_to_label
-            ti = time.time();
-            fimage = camera.read()
-            print time.time()-ti, 'read()';
-            ti = time.time();
-            # Convert image to grayscale.
-            fimage = cv2.cvtColor(fimage, cv2.COLOR_RGB2GRAY)
-            print time.time()-ti, 'cvtColor()';
-            ti = time.time();
-            # Get coordinates of single face in captured image.
-            result = face.detect_single(fimage)
-            print time.time()-ti, 'detectSingle()';
-            if result is not None:
-                x, y, w, h = result
-                ti = time.time();
-                # Crop and resize image to face.
-                crop = face.resize(face.crop(fimage, x, y, w, h))
-                print time.time()-ti, 'resize()';
-                ti = time.time();
-                # Test face against model.
-                label, confidence = model.predict(crop)
-                print time.time()-ti, 'predict()';
-                print '\nSehe Gesicht von {0} "{1}", Sicherheit={2} (niedriger ist besser).'.format(label,num_to_label[str(label)], confidence)
-                if confidence < config.POSITIVE_THRESHOLD:
-                    print 'Erkannt!'
-                    speak("Hallo {0}! Ich habe dich erkannt!".format(num_to_label[str(label)]))
-                else:
-                    speak('Da ist ein Gesicht, aber ich weiss nicht wer es sein könnte.')
-            else:
-                speak("Ich erkenne leider kein Gesicht.")
-        lastRcv = monotonic.monotonic()
-        # HTTP send reply
-        s.wfile.close()
-
+            lastRcv = monotonic.monotonic()
+            # HTTP send reply
+            s.wfile.close()
 
 def currentTimeMillis():
     #Returns the actual time in milliseconds
@@ -282,170 +282,178 @@ def currentTimeMillis():
 
 def startRemote():
     global tVal, pVal, lastRcv, lastPkg, beep, blinkthread, light_on
-    try:
-        print("Starting remote support...")
-        ser = serial.Serial('/dev/ttyUSB0', 115200, timeout=0.5)
-        lastX = 0
-        lastY = 0
-        lastMode = 0
-        lastRcv = monotonic.monotonic()
-        inp = ''
-        while inp != 'm2b ready.':
-            inp = ser.readline().strip()
-            print("wait for ready: '{}'".format(inp))
+    connected = False
+    while True:
+        try:
+            print("Starting remote support...")
+            ser = serial.Serial('/dev/ttyUSB-jeelink', 115200, timeout=0.5)
+            lastX = 0
+            lastY = 0
+            lastMode = 0
+            lastRcv = monotonic.monotonic()
+            inp = ''
+            while inp != 'm2b ready.':
+                inp = ser.readline().strip()
+                print("wait for ready: '{}'".format(inp))
 
-        snd_files = sorted(os.listdir('snd/'))
-        print(snd_files)
-        snd = 0
-        for snd_file in snd_files:
-            snd += 1
-            snd_file = snd_file.replace('.mp3', '')
-            message = b'm2bsnd\0'
-            message += struct.pack('bb', snd, min(len(snd_file),15)+1)
-            message += snd_file[:15] + '\0'
-            ser.write(serial_driver.send(message))
-            ser.flush()
-            inp = ser.readline().rstrip()
-            print(inp)
-
-        while True:
-            try:
-                vals = []
-                s_line = ser.readline().strip()
-                message = b'status\0'
-                message += struct.pack('ff', fuelgauge.percent, fuelgauge.voltage)
-                #print(serial_driver.send(message))
+            snd_files = sorted(os.listdir('snd/'))
+            print(snd_files)
+            snd = 0
+            connected = True
+            for snd_file in snd_files:
+                snd += 1
+                snd_file = snd_file.replace('.mp3', '')
+                message = b'm2bsnd\0'
+                message += struct.pack('bb', snd, min(len(snd_file),15)+1)
+                message += snd_file[:15] + '\0'
                 ser.write(serial_driver.send(message))
-                #if s_line != '':
-                #    print(s_line)
-                #outp = ser.write('{:5.2f} {:5.2f}\n'.format(fuelgauge.percent, fuelgauge.voltage)) #  battery
-                #print("Last: " + str(lastRcv) + ", from: " + lastPkg)
-                inp = s_line.split(" ")
-                if len(inp) >= 5:
-                    lastRcv = monotonic.monotonic()
-                if lastRcv + 0.5 < monotonic.monotonic() and lastPkg == "remote":
-                    pi2kf.go(0, 0)
-                    print(str(lastRcv + 0.5) + "<" + str(monotonic.monotonic()))
-                    continue
-                elif lastRcv + 1 < monotonic.monotonic() and lastPkg == "web":
-                    pi2kf.go(0, 0)
-                    continue
-                if len(inp) < 5:
-                    continue
-                x = int(inp[0])
-                y = int(inp[1])
-                x /= 511.0
-                y /= 511.0
-                leng = math.sqrt(x*x + y*y)
-                w = math.atan2(x, -y)
-                deg = w * 180/math.pi
-                q = w / math.pi
-                l = 0
-                r = 0
-                #print("x={:5.2f}, y={:5.2f} leng={:5.2f}, deg={:5.2f}, q={:5.2f}".format(x, y, leng, deg, q))
-                if q > 0.0 and q <= 0.5:
-                    l = 1
-                    r = 1 - (q * 4)
-                elif q > 0.5 and q <= 1.0:
-                    l=-1
-                    r = 1 - ((q*4) - 2)
-                elif q >= -1.0 and q < -0.5:
-                    r = -1
-                    l = (q*4)+3
-                elif q >= -0.5 and q <= 0.0:
-                    r = 1
-                    l = (q * 4) + 1
-                r *= leng
-                l *= leng
-                if lastX != x or lastY != y:
-                    if int(inp[4]) & 1:
-                      pi2kf.go(r * 100, l* 100)
-                      lastX = x
-                      lastY = y
-                if lastMode != int(inp[4]):
-                    pi2kf.go(0,0)
-                if int(inp[4]) & 2:
-                   go2 = int(inp[1]) / 511.0 * 100 * -1
-                   go1 = int(inp[3]) / 511.0 * 100 * -1
-                   pi2kf.go(go1, go2)
+                ser.flush()
+                inp = ser.readline().rstrip()
+                print(inp)
 
-                #cam
-                if not int(inp[4]) & 2:
-                    x1 = int(inp[2])
-                    y1 = int(inp[3])
-                    if (abs(x1) > 10 or abs(y1) > 10):
-                        x1 /= -150.0
-                        y1 /= -150.0
-                        tVal += y1
-                        pVal += x1
-                        if pVal > 70:
-                            pVal = 70
-                        if pVal < -70:
-                            pVal = -70
-                        if tVal > 90:
-                            tVal = 90
-                        if tVal < -90:
-                            tVal = -90
-                        print("tVal={} pVal={}".format(tVal, pVal))
+            while connected:
+                try:
+                    vals = []
+                    s_line = ser.readline().strip()
+                    message = b'status\0'
+                    message += struct.pack('ff', fuelgauge.percent, fuelgauge.voltage)
+                    #print(serial_driver.send(message))
+                    ser.write(serial_driver.send(message))
+                    if s_line != '':
+                        print(s_line)
+                    #outp = ser.write('{:5.2f} {:5.2f}\n'.format(fuelgauge.percent, fuelgauge.voltage)) #  battery
+                    #print("Last: " + str(lastRcv) + ", from: " + lastPkg)
+                    inp = s_line.split(" ")
+                    if len(inp) >= 5:
+                        lastRcv = monotonic.monotonic()
+                    if lastRcv + 0.5 < monotonic.monotonic() and lastPkg == "remote":
+                        pi2kf.go(0, 0)
+                        print(str(lastRcv + 0.5) + "<" + str(monotonic.monotonic()))
+                        continue
+                    elif lastRcv + 1 < monotonic.monotonic() and lastPkg == "web":
+                        pi2kf.go(0, 0)
+                        continue
+                    if len(inp) < 5:
+                        continue
+                    x = int(inp[0])
+                    y = int(inp[1])
+                    x /= 511.0
+                    y /= 511.0
+                    leng = math.sqrt(x*x + y*y)
+                    w = math.atan2(x, -y)
+                    deg = w * 180/math.pi
+                    q = w / math.pi
+                    l = 0
+                    r = 0
+                    #print("x={:5.2f}, y={:5.2f} leng={:5.2f}, deg={:5.2f}, q={:5.2f}".format(x, y, leng, deg, q))
+                    if q > 0.0 and q <= 0.5:
+                        l = 1
+                        r = 1 - (q * 4)
+                    elif q > 0.5 and q <= 1.0:
+                        l=-1
+                        r = 1 - ((q*4) - 2)
+                    elif q >= -1.0 and q < -0.5:
+                        r = -1
+                        l = (q*4)+3
+                    elif q >= -0.5 and q <= 0.0:
+                        r = 1
+                        l = (q * 4) + 1
+                    r *= leng
+                    l *= leng
+                    if lastX != x or lastY != y:
+                        if int(inp[4]) & 1:
+                          pi2kf.go(r * 100, l* 100)
+                          lastX = x
+                          lastY = y
+                    if lastMode != int(inp[4]):
+                        pi2kf.go(0,0)
+                    if int(inp[4]) & 2:
+                       go2 = int(inp[1]) / 511.0 * 100 * -1
+                       go1 = int(inp[3]) / 511.0 * 100 * -1
+                       pi2kf.go(go1, go2)
+
+                    #cam
+                    if not int(inp[4]) & 2:
+                        x1 = int(inp[2])
+                        y1 = int(inp[3])
+                        if (abs(x1) > 10 or abs(y1) > 10):
+                            x1 /= -150.0
+                            y1 /= -150.0
+                            tVal += y1
+                            pVal += x1
+                            if pVal > 70:
+                                pVal = 70
+                            if pVal < -70:
+                                pVal = -70
+                            if tVal > 90:
+                                tVal = 90
+                            if tVal < -90:
+                                tVal = -90
+                            print("tVal={} pVal={}".format(tVal, pVal))
+                            pi2kf.setServo(pan, pVal)
+                            pi2kf.setServo(tilt, tVal)
+                        #print("{} bla".format(inp[4]))
+                    if int(inp[4]) & 0x08:
+                        tVal = tCenter
+                        pVal = pCenter
                         pi2kf.setServo(pan, pVal)
                         pi2kf.setServo(tilt, tVal)
-                    #print("{} bla".format(inp[4]))
-                if int(inp[4]) & 0x08:
-                    tVal = tCenter
-                    pVal = pCenter
-                    pi2kf.setServo(pan, pVal)
-                    pi2kf.setServo(tilt, tVal)
-                if int(inp[4]) & 0x200 and lastMode & 0x200 == 0:
-                    Popen(["/usr/bin/curl", 'localhost/cam/cmd_pipe.php?cmd=img'])
-                    call("aplay -q /home/pi/pi2kf/440Hz.wav &", shell=True)
-                lastMode = int(inp[4])
-                lastRcv = monotonic.monotonic()
-                lastPkg = "remote"
-                if int(inp[4]) & 0x10:
-                    if not beep:
-                        beep = True
-                        call("mpg123 --loop -1 --scale 3000 snd/beep-beep.mp3 &", shell=True)
-                if int(inp[4]) & 0x20:
-                    if beep:
-                        beep = False
-                        call("killall mpg123", shell=True)
+                    if int(inp[4]) & 0x200 and lastMode & 0x200 == 0:
+                        Popen(["/usr/bin/curl", 'localhost/cam/cmd_pipe.php?cmd=img'])
+                        call("aplay -q /home/pi/pi2kf/440Hz.wav &", shell=True)
+                    lastMode = int(inp[4])
+                    lastRcv = monotonic.monotonic()
+                    lastPkg = "remote"
+                    if int(inp[4]) & 0x10:
+                        if not beep:
+                            beep = True
+                            call("mpg123 --loop -1 --scale 3000 snd/beep-beep.mp3 &", shell=True)
+                    if int(inp[4]) & 0x20:
+                        if beep:
+                            beep = False
+                            call("killall mpg123", shell=True)
 
-                if int(inp[4]) & 0x40:
-                    if not light_on:
-                        pi2kf.setLed(True)
-                    light_on = True
-                else:
-                    if light_on:
-                        pi2kf.setLed(False)
-                    light_on = False
-                    #if not blinkthread.isAlive():
-                    #    print("Starting Thread...")
-                    #    blinkthread.start()
-                    #    blinkthread.setBrightness(255)
-                    #    blinkthread.setBlinkSpeed(0.5)
-                if int(inp[4]) & 0x80:
-                    if light_on:
-                        pi2kf.setLed(False)
-                    light_on = False
-                    #if blinkthread.isAlive():
-                    #    print("Stopping Thread")
-                    #    blinkthread.quit()
-                    #    blinkthread.join()
-                    #    blinkthread = pi2kf.BlinkThread()
-                if int(inp[4]) & 0x100:
-                    speak("Herrunterfahren...")
-                    time.sleep(3)
-                    call("mpg123 -q snd/Robot_dying.mp3", shell=True)
-                    call("/sbin/poweroff &", shell=True)
-            except Exception, e:
-                traceback.print_exc()
-                print("Overriding...")
-                print(str(e))
-                continue
-    except:
-        traceback.print_exc()
-        speak("Fernschteuerung nicht Verbunden.")
-        print("Remote Error!")
+                    if int(inp[4]) & 0x40:
+                        if not light_on:
+                            pi2kf.setLed(True)
+                        light_on = True
+                    else:
+                        if light_on:
+                            pi2kf.setLed(False)
+                        light_on = False
+                        #if not blinkthread.isAlive():
+                        #    print("Starting Thread...")
+                        #    blinkthread.start()
+                        #    blinkthread.setBrightness(255)
+                        #    blinkthread.setBlinkSpeed(0.5)
+                    if int(inp[4]) & 0x80:
+                        if light_on:
+                            pi2kf.setLed(False)
+                        light_on = False
+                        #if blinkthread.isAlive():
+                        #    print("Stopping Thread")
+                        #    blinkthread.quit()
+                        #    blinkthread.join()
+                        #    blinkthread = pi2kf.BlinkThread()
+                    if int(inp[4]) & 0x100:
+                        speak("Herrunterfahren...")
+                        time.sleep(3)
+                        call("mpg123 -q snd/Robot_dying.mp3", shell=True)
+                        call("/sbin/poweroff &", shell=True)
+                except Exception, e:
+                    connected = False
+                    pi2kf.go(0,0)
+                    traceback.print_exc()
+                    print("Overriding...")
+                    print(str(e))
+                    continue
+        except:
+            connected = False
+            pi2kf.go(0,0)
+            traceback.print_exc()
+            speak("Fernschteuerung nicht Verbunden.")
+            print("Remote Error!")
+            time.sleep(5);
 
 def quitThread():
     global quit
@@ -535,9 +543,9 @@ if __name__ == '__main__':
     ip_addr = ''
     req=0
 
-    buttonThread = threading.Thread(target=shutdownButton)
-    buttonThread.daemon = True
-    buttonThread.start()
+    #buttonThread = threading.Thread(target=shutdownButton)
+    #buttonThread.daemon = True
+    #buttonThread.start()
 
     remoteThread = threading.Thread(target=startRemote)
     remoteThread.daemon = True

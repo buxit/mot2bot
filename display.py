@@ -57,7 +57,7 @@ def update(image):
         disp.display()
     else:
         print "update image"
-        idata = image.tostring()
+        idata = image.tobytes()
         pgimage = pygame.image.fromstring(idata, image.size, image.mode)
         surf.blit(pgimage, (0,32))
         pygame.display.update()
