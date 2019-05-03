@@ -27,6 +27,7 @@ from optparse import OptionParser
 import config
 import pi2kf
 import display
+import robotctl
 
 HOST_NAME = ''		# listen on this address
 PORT_NUMBER = 8888	# listen on this port
@@ -326,7 +327,7 @@ def startRemote():
                     inp = s_line.split(" ")
                     if len(inp) >= 5:
                         lastRcv = monotonic.monotonic()
-                    if lastRcv + 0.5 < monotonic.monotonic() and lastPkg == "remote":
+                    if lastRcv + 0.5 < monotonic.monotonic() and (lastPkg == "remote" or lastPkg == "app"):
                         pi2kf.go(0, 0)
                         print(str(lastRcv + 0.5) + "<" + str(monotonic.monotonic()))
                         continue
@@ -468,6 +469,11 @@ def shutdownButton():
     quitThread()
     call("mpg123 -q snd/Robot_dying.mp3", shell=True)
     call("/sbin/poweroff &", shell=True)
+
+def _tmp_update_pkg():
+    global lastPkg, lastRcv
+    lastPkg = "app"
+    lastRcv = monotonic.monotonic()
 
 if __name__ == '__main__':
     usage = "usage: %prog [options]"
@@ -616,6 +622,10 @@ if __name__ == '__main__':
     display.update(image)
 
     last_bat = 0.0
+
+    app = robotctl.RoboCtl(pi2kf, _tmp_update_pkg)
+    app.start()
+
     try:
         while not quit:
             if time.time() > last_bat + 1.0:
